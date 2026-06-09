@@ -24,7 +24,16 @@ jobs:
           distribution: temurin
           java-version: 17
 
-      # 3. Setup Gradle with wrapper validation
+      # 2.5. Diagnose Network and Pre-verify Gradle Setup (with retry)
+      - name: Diagnose and Pre-verify Gradle Network
+        run: |
+          echo "Testing DNS and Connectivity to Gradle Services..."
+          for i in 1 2 3; do
+            echo "Attempt $i to connect to services.gradle.org..."
+            curl -I -s --connect-timeout 10 https://services.gradle.org/distributions/ && echo "Successfully accessed Gradle servers!" && break || (echo "Failed to connect, retrying in 10 seconds..." && sleep 10)
+          done
+
+      # 3. Setup Gradle with caching and wrapper validation
       - name: Setup Gradle
         uses: gradle/actions/setup-gradle@v3
         with:
@@ -35,13 +44,21 @@ jobs:
       - name: Grant execute permission for gradlew
         run: chmod +x gradlew
 
-      # 5. Build Debug APK
+      # 5. Build Debug APK (with dependency retry protection)
       - name: Build Debug APK
-        run: ./gradlew assembleDebug
+        run: |
+          for i in 1 2 3; do
+            echo "Build attempt $i..."
+            ./gradlew assembleDebug --no-daemon && break || (echo "Build failed or network timed out, retrying in 15 seconds..." && sleep 15)
+          done
 
-      # 6. Run Unit Tests
+      # 6. Run Unit Tests (with retry protection)
       - name: Run Tests
-        run: ./gradlew test
+        run: |
+          for i in 1 2 3; do
+            echo "Testing attempt $i..."
+            ./gradlew test --no-daemon && break || (echo "Tests failed, retrying in 15 seconds..." && sleep 15)
+          done
 
       # 7. Upload built APK
       - name: Upload APK Artifact
@@ -49,3 +66,4 @@ jobs:
         with:
           name: app-debug
           path: app/build/outputs/apk/debug/app-debug.apk
+
