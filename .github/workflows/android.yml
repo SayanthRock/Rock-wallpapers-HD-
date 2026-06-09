@@ -28,8 +28,8 @@ jobs:
       - name: Setup Gradle
         uses: gradle/actions/setup-gradle@v3
         with:
-          validate-wrappers: true
           cache-read-only: false
+          validate-wrappers: true
 
       # 4. Ensure gradlew has execute permission
       - name: Grant execute permission for gradlew
