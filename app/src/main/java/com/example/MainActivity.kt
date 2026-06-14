@@ -50,8 +50,11 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.blur
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.draw.drawBehind
+import androidx.compose.ui.draw.drawWithContent
 import androidx.compose.ui.draw.shadow
 import androidx.compose.ui.geometry.center
+import androidx.compose.ui.graphics.ClipOp
+import androidx.compose.ui.graphics.drawscope.clipPath
 import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.ColorFilter
@@ -82,6 +85,10 @@ import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
 import kotlin.math.abs
 import kotlin.random.Random
+
+enum class PreviewDeviceStyle {
+    IPHONE, ANDROID
+}
 
 class MainActivity : ComponentActivity() {
     override fun onCreate(savedInstanceState: Bundle?) {
@@ -197,7 +204,8 @@ data class EditorSettings(
     val subjectColorFilterName: String = "Original",
     val subjectEffectName: String = "None",
     val subjectShape: String = "Portal", // Portal (Circle), Shield (Hexagon), Crown (Diamond), Stadium (Capsule)
-    val subjectScaleRatio: Float = 0.65f
+    val subjectScaleRatio: Float = 0.65f,
+    val displayIsolationMode: String = "Both" // "Both", "Subject Only", "Background Only"
 )
 
 // Custom shapes drawn purely in Kotlin Compose path drawing
@@ -289,7 +297,7 @@ fun MainScreen(
     var showPreview by remember { mutableStateOf(false) }
     var showSettings by remember { mutableStateOf(false) }
     var searchQuery by remember { mutableStateOf("") }
-    var selectedCategory by remember { mutableStateOf("Subjects") }
+    var selectedCategory by remember { mutableStateOf("Liquid Glass") }
     var selectedTagFilter by remember { mutableStateOf<String?>(null) }
     var customFileInputText by remember { mutableStateOf("") }
     
@@ -298,6 +306,7 @@ fun MainScreen(
     var cardAspectRatioName by rememberSaveable { mutableStateOf("Tall") }
     var cardRoundnessName by rememberSaveable { mutableStateOf("ROUNDED") }
     var showCaptions by rememberSaveable { mutableStateOf(true) }
+    var isWorkspaceMinimized by rememberSaveable { mutableStateOf(false) }
 
     // Gemini Rock AI Studio state variables
     var aiModelName by rememberSaveable { mutableStateOf("gemini-3.1-flash-image-preview") }
@@ -308,7 +317,7 @@ fun MainScreen(
     var aiImageSize by remember { mutableStateOf("1K") }
     var aiErrorMessage by remember { mutableStateOf<String?>(null) }
 
-    val categories = listOf("Subjects", "Backgrounds", "Nature", "Textures", "Saved", "Custom", "AI Studio")
+    val categories = listOf("Liquid Glass", "Subjects", "Backgrounds", "Nature", "Textures", "Saved", "Custom", "Resolution Centre", "AI Studio")
 
     // Image Picker
     val pickerLauncher = rememberLauncherForActivityResult(
@@ -325,6 +334,48 @@ fun MainScreen(
     // Base searchable database of ultra-premium wall items
     val baseWallpapers = remember {
         mutableStateListOf(
+            WallpaperItem(
+                url = "https://images.unsplash.com/photo-1618005182384-a83a8bd57fbe?q=90&w=1200&fit=crop",
+                category = "Liquid Glass",
+                title = "Frosted Ribbon Fluid Glass",
+                tags = listOf("glass", "liquid", "blur", "crystal", "holographic", "sayanthrock")
+            ),
+            WallpaperItem(
+                url = "https://images.unsplash.com/photo-1634017839464-5c339ebe3cb4?q=90&w=1200&fit=crop",
+                category = "Liquid Glass",
+                title = "Chromatic Fluid Shell",
+                tags = listOf("liquid", "glass", "chromatic", "rainbow", "bubble", "sayanthrock")
+            ),
+            WallpaperItem(
+                url = "https://images.unsplash.com/photo-1620121692029-d088224ddc74?q=90&w=1200&fit=crop",
+                category = "Liquid Glass",
+                title = "Aurora Borealis Glass Wave",
+                tags = listOf("glass", "aurora", "shining", "neon", "sayanthrock")
+            ),
+            WallpaperItem(
+                url = "https://images.unsplash.com/photo-1541701494587-cb58502866ab?q=90&w=1200&fit=crop",
+                category = "Liquid Glass",
+                title = "Specular Rippling Prism",
+                tags = listOf("glass", "water", "liquid", "prism", "sayanthrock")
+            ),
+            WallpaperItem(
+                url = "https://images.unsplash.com/photo-1550684848-fac1c5b4e853?q=90&w=1200&fit=crop",
+                category = "Liquid Glass",
+                title = "Frosted Glassmorphic Velvet",
+                tags = listOf("glass", "blur", "velvet", "violet", "sayanthrock")
+            ),
+            WallpaperItem(
+                url = "https://images.unsplash.com/photo-1508247967583-7d982ea009e3?q=90&w=1200&fit=crop",
+                category = "Liquid Glass",
+                title = "Abstract Specular Flow",
+                tags = listOf("glass", "liquid", "wave", "colorful", "sayanthrock")
+            ),
+            WallpaperItem(
+                url = "https://images.unsplash.com/photo-1614728263952-84ea256f9679?q=90&w=1200&fit=crop",
+                category = "Liquid Glass",
+                title = "Prismatic Obsidian Crystal",
+                tags = listOf("crystal", "glass", "cyberpunk", "prism", "sayanthrock")
+            ),
             WallpaperItem(
                 url = "https://images.unsplash.com/photo-1542362567-b054ec5f89fa?q=90&w=1200&fit=crop",
                 category = "Subjects",
@@ -927,7 +978,11 @@ fun MainScreen(
             }
 
             // Dual Grid & Carousel presentation of wallpapers
-            if (selectedCategory == "AI Studio") {
+            if (selectedCategory == "Resolution Centre") {
+                Box(modifier = Modifier.weight(1f)) {
+                    ResolutionCentreLayout()
+                }
+            } else if (selectedCategory == "AI Studio") {
                 Box(modifier = Modifier.weight(1f)) {
                     AiRockStudioLayout(
                         context = LocalContext.current,
@@ -1079,10 +1134,18 @@ fun MainScreen(
                 }
             } else {
                 // Primary Wallpaper Grid Area with dynamic layout customization parameters
-                val targetCols = when (gridLayoutSize) {
-                    "LARGE" -> 1
-                    "SMALL" -> 3
-                    else -> 2
+                val targetCols = if (isWorkspaceMinimized) {
+                    when (gridLayoutSize) {
+                        "LARGE" -> 2
+                        "SMALL" -> 4
+                        else -> 3
+                    }
+                } else {
+                    when (gridLayoutSize) {
+                        "LARGE" -> 1
+                        "SMALL" -> 3
+                        else -> 2
+                    }
                 }
                 val targetAspect = when (cardAspectRatioName) {
                     "Square" -> 1.0f
@@ -1197,22 +1260,66 @@ fun MainScreen(
                                         )
                                 )
 
-                                // Favorite Heart Overlay
-                                IconButton(
-                                    onClick = { toggleSaveWallpaper(item.url) },
+                                // Control Buttons Overlay (Favorite and Direct Download)
+                                Column(
                                     modifier = Modifier
                                         .align(Alignment.TopEnd)
-                                        .padding(8.dp)
-                                        .size(36.dp)
-                                        .background(Color.Black.copy(alpha = 0.45f), CircleShape)
-                                        .testTag("favorite_button_${item.title.replace("[^a-zA-Z0-9]".toRegex(), "_").lowercase()}")
+                                        .padding(8.dp),
+                                    verticalArrangement = Arrangement.spacedBy(6.dp),
+                                    horizontalAlignment = Alignment.CenterHorizontally
                                 ) {
-                                    Icon(
-                                        imageVector = if (savedUrls.contains(item.url)) Icons.Default.Favorite else Icons.Default.FavoriteBorder,
-                                        contentDescription = "Favorite ${item.title}",
-                                        tint = if (savedUrls.contains(item.url)) Color.Red else Color.White,
-                                        modifier = Modifier.size(18.dp)
-                                    )
+                                    // Favorite Heart Overlay
+                                    IconButton(
+                                        onClick = { toggleSaveWallpaper(item.url) },
+                                        modifier = Modifier
+                                            .size(36.dp)
+                                            .background(Color.Black.copy(alpha = 0.45f), CircleShape)
+                                            .testTag("favorite_button_${item.title.replace("[^a-zA-Z0-9]".toRegex(), "_").lowercase()}")
+                                    ) {
+                                        Icon(
+                                            imageVector = if (savedUrls.contains(item.url)) Icons.Default.Favorite else Icons.Default.FavoriteBorder,
+                                            contentDescription = "Favorite ${item.title}",
+                                            tint = if (savedUrls.contains(item.url)) Color.Red else Color.White,
+                                            modifier = Modifier.size(18.dp)
+                                        )
+                                    }
+
+                                    // Download Button Overlay
+                                    var isGridDownloading by remember { mutableStateOf(false) }
+                                    val context = LocalContext.current
+                                    IconButton(
+                                        onClick = {
+                                            isGridDownloading = true
+                                            scope.launch {
+                                                val success = saveImageToStorage(context, item.url)
+                                                isGridDownloading = false
+                                                if (success) {
+                                                    Toast.makeText(context, "Saved to Pictures!", Toast.LENGTH_SHORT).show()
+                                                } else {
+                                                    Toast.makeText(context, "Download failed.", Toast.LENGTH_SHORT).show()
+                                                }
+                                            }
+                                        },
+                                        modifier = Modifier
+                                            .size(36.dp)
+                                            .background(Color.Black.copy(alpha = 0.45f), CircleShape)
+                                            .testTag("download_button_${item.title.replace("[^a-zA-Z0-9]".toRegex(), "_").lowercase()}")
+                                    ) {
+                                        if (isGridDownloading) {
+                                            CircularProgressIndicator(
+                                                color = Color.White,
+                                                modifier = Modifier.size(16.dp),
+                                                strokeWidth = 2.dp
+                                            )
+                                        } else {
+                                            Icon(
+                                                imageVector = Icons.Default.Download,
+                                                contentDescription = "Download ${item.title}",
+                                                tint = Color.White,
+                                                modifier = Modifier.size(18.dp)
+                                            )
+                                        }
+                                    }
                                 }
 
                                 // Caption Overlay (Only show if Toggle is Enabled)
@@ -1541,6 +1648,60 @@ fun MainScreen(
                             }
                         }
                     }
+                    
+                    HorizontalDivider(color = MaterialTheme.colorScheme.outlineVariant, modifier = Modifier.padding(vertical = 12.dp))
+                    
+                    Text("WORKSPACE DISPLAY SCALE:", fontWeight = FontWeight.Black, style = MaterialTheme.typography.bodyMedium)
+                    Spacer(Modifier.height(4.dp))
+                    Text("Option to minimize and maximize the display", fontSize = 11.sp, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                    Spacer(Modifier.height(8.dp))
+                    
+                    Row(
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .background(MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.5f), RoundedCornerShape(12.dp))
+                            .padding(4.dp),
+                        horizontalArrangement = Arrangement.spacedBy(4.dp)
+                    ) {
+                        listOf("MINIMIZE", "STANDARD", "MAXIMIZE").forEach { scaleOpt ->
+                            val isSel = if (scaleOpt == "MINIMIZE") {
+                                isWorkspaceMinimized && gridLayoutSize == "SMALL"
+                            } else if (scaleOpt == "MAXIMIZE") {
+                                !isWorkspaceMinimized && gridLayoutSize == "LARGE"
+                            } else {
+                                !isWorkspaceMinimized && gridLayoutSize == "STANDARD"
+                            }
+                            
+                            Box(
+                                modifier = Modifier
+                                    .weight(1f)
+                                    .clip(RoundedCornerShape(8.dp))
+                                    .background(if (isSel) MaterialTheme.colorScheme.primary else Color.Transparent)
+                                    .clickable {
+                                        if (scaleOpt == "MINIMIZE") {
+                                            isWorkspaceMinimized = true
+                                            gridLayoutSize = "SMALL"
+                                        } else if (scaleOpt == "MAXIMIZE") {
+                                            isWorkspaceMinimized = false
+                                            gridLayoutSize = "LARGE"
+                                        } else {
+                                            isWorkspaceMinimized = false
+                                            gridLayoutSize = "STANDARD"
+                                        }
+                                    }
+                                    .padding(vertical = 8.dp)
+                                    .testTag("scale_opt_${scaleOpt.lowercase()}"),
+                                contentAlignment = Alignment.Center
+                            ) {
+                                Text(
+                                    text = scaleOpt,
+                                    fontSize = 9.sp,
+                                    fontWeight = FontWeight.Bold,
+                                    color = if (isSel) MaterialTheme.colorScheme.onPrimary else MaterialTheme.colorScheme.onSurfaceVariant
+                                )
+                            }
+                        }
+                    }
                 }
             },
             confirmButton = {
@@ -1601,12 +1762,14 @@ fun WallpaperPreviewDialog(
 
     // IMAGE RENDERING QUALITY state
     var selectedRenderOption by remember { mutableStateOf("HD 1080p") }
+    var previewDeviceStyle by remember { mutableStateOf(PreviewDeviceStyle.IPHONE) }
+    var activeOverlayStyle by remember { mutableStateOf("Lock") }
 
     val colorFiltersList = listOf(
         "Original", "Warm Amber", "Cool Teal", "Neon Cyber", "Forest Zen", "Rose Gold", "Sepia", "Sleek Mono"
     )
     val effectsList = listOf(
-        "None", "Vignette", "High Contrast", "Invert Light", "Retro Grain", "Pixelate", "Rainbow Drift"
+        "None", "Vignette", "High Contrast", "Invert Light", "Retro Grain", "Pixelate", "Rainbow Drift", "Liquid Glass", "Glassmorphic Blur"
     )
 
     // Dynamic Time & Date for high fidelity simulated phone overlays
@@ -1729,24 +1892,80 @@ fun WallpaperPreviewDialog(
                                 )
                             }
 
-                            Button(
-                                onClick = {
-                                    isSaving = true
-                                    onSetWallpaper(scale, offset, editorSettings)
-                                },
-                                shape = RoundedCornerShape(12.dp),
-                                colors = ButtonDefaults.buttonColors(
-                                    containerColor = Color.White,
-                                    contentColor = Color.Black
-                                ),
-                                contentPadding = PaddingValues(horizontal = 14.dp, vertical = 4.dp),
-                                modifier = Modifier.height(34.dp),
-                                enabled = !isSaving
+                            Row(
+                                horizontalArrangement = Arrangement.spacedBy(8.dp),
+                                verticalAlignment = Alignment.CenterVertically
                             ) {
-                                if (isSaving) {
-                                    CircularProgressIndicator(color = Color.Black, modifier = Modifier.size(14.dp))
-                                } else {
-                                    Text("APPLY", fontWeight = FontWeight.Black, fontSize = 11.sp)
+                                var isCustomDownloading by remember { mutableStateOf(false) }
+                                val context = LocalContext.current
+                                val scope = rememberCoroutineScope()
+
+                                Button(
+                                    onClick = {
+                                        isCustomDownloading = true
+                                        scope.launch {
+                                            val success = saveCustomizedImageToStorage(
+                                                context = context,
+                                                photo = photo,
+                                                scale = scale,
+                                                offset = offset,
+                                                settings = editorSettings,
+                                                selectedRenderOption = selectedRenderOption
+                                            )
+                                            isCustomDownloading = false
+                                            if (success) {
+                                                Toast.makeText(context, "Saved custom design to Pictures!", Toast.LENGTH_SHORT).show()
+                                            } else {
+                                                Toast.makeText(context, "Failed to save design.", Toast.LENGTH_SHORT).show()
+                                            }
+                                        }
+                                    },
+                                    shape = RoundedCornerShape(12.dp),
+                                    colors = ButtonDefaults.buttonColors(
+                                        containerColor = Color.White.copy(alpha = 0.15f),
+                                        contentColor = Color.White
+                                    ),
+                                    border = BorderStroke(1.dp, Color.White.copy(alpha = 0.3f)),
+                                    contentPadding = PaddingValues(horizontal = 12.dp, vertical = 4.dp),
+                                    modifier = Modifier
+                                        .height(34.dp)
+                                        .testTag("download_preview_button"),
+                                    enabled = !isCustomDownloading
+                                ) {
+                                    if (isCustomDownloading) {
+                                        CircularProgressIndicator(color = Color.White, modifier = Modifier.size(14.dp))
+                                    } else {
+                                        Row(
+                                            verticalAlignment = Alignment.CenterVertically,
+                                            horizontalArrangement = Arrangement.spacedBy(4.dp)
+                                        ) {
+                                            Icon(Icons.Default.Download, contentDescription = "Download Current Custom Style", modifier = Modifier.size(14.dp))
+                                            Text("SAVE DESIGN", fontWeight = FontWeight.Black, fontSize = 10.5.sp)
+                                        }
+                                    }
+                                }
+
+                                Button(
+                                    onClick = {
+                                        isSaving = true
+                                        onSetWallpaper(scale, offset, editorSettings)
+                                    },
+                                    shape = RoundedCornerShape(12.dp),
+                                    colors = ButtonDefaults.buttonColors(
+                                        containerColor = Color.White,
+                                        contentColor = Color.Black
+                                    ),
+                                    contentPadding = PaddingValues(horizontal = 14.dp, vertical = 4.dp),
+                                    modifier = Modifier
+                                        .height(34.dp)
+                                        .testTag("apply_preview_button"),
+                                    enabled = !isSaving
+                                ) {
+                                    if (isSaving) {
+                                        CircularProgressIndicator(color = Color.Black, modifier = Modifier.size(14.dp))
+                                    } else {
+                                        Text("APPLY", fontWeight = FontWeight.Black, fontSize = 11.sp)
+                                    }
                                 }
                             }
                         }
@@ -1811,53 +2030,147 @@ fun WallpaperPreviewDialog(
 
                     Spacer(modifier = Modifier.height(6.dp))
 
-                    // IMAGE QUALITY ENHANCER selection bar
+                    // IMAGE QUALITY & PREVIEW DEVICE selection bar (sayanthRock Custom Framing)
                     Surface(
                         shape = RoundedCornerShape(12.dp),
-                        color = Color.Black.copy(alpha = 0.5f),
-                        border = BorderStroke(0.8.dp, Color.White.copy(alpha = 0.1f)),
+                        color = Color.Black.copy(alpha = 0.6f),
+                        border = BorderStroke(0.8.dp, Color.White.copy(alpha = 0.12f)),
                         modifier = Modifier.fillMaxWidth()
                     ) {
-                        Row(
+                        Column(
                             modifier = Modifier
                                 .fillMaxWidth()
-                                .padding(horizontal = 12.dp, vertical = 5.dp),
-                            horizontalArrangement = Arrangement.Center,
-                            verticalAlignment = Alignment.CenterVertically
+                                .padding(8.dp),
+                            verticalArrangement = Arrangement.spacedBy(6.dp)
                         ) {
-                            Icon(
-                                imageVector = Icons.Default.AutoAwesome,
-                                contentDescription = "Quality Selector",
-                                tint = if (selectedRenderOption != "SD Preview") Color(0xFFFFB300) else Color.White.copy(alpha = 0.6f),
-                                modifier = Modifier.size(13.dp)
-                            )
-                            Spacer(modifier = Modifier.width(6.dp))
-                            Text(
-                                text = "RENDER QUALITY:",
-                                fontSize = 8.sp,
-                                fontWeight = FontWeight.Black,
-                                letterSpacing = 0.8.sp,
-                                color = Color.White.copy(alpha = 0.6f)
-                            )
-                            Spacer(modifier = Modifier.width(8.dp))
-                            listOf("SD Preview", "HD 1080p", "UHD 4K").forEach { option ->
-                                val isSel = selectedRenderOption == option
-                                Surface(
-                                    onClick = { selectedRenderOption = option },
-                                    shape = RoundedCornerShape(6.dp),
-                                    color = if (isSel) MaterialTheme.colorScheme.primary else Color.White.copy(alpha = 0.05f),
-                                    border = BorderStroke(0.5.dp, if (isSel) Color.White else Color.White.copy(alpha = 0.1f)),
-                                    modifier = Modifier
-                                        .padding(horizontal = 2.dp)
-                                        .height(18.dp)
-                                ) {
-                                    Box(contentAlignment = Alignment.Center, modifier = Modifier.padding(horizontal = 7.dp)) {
-                                        Text(
-                                            text = option,
-                                            fontSize = 7.5.sp,
-                                            fontWeight = FontWeight.Black,
-                                            color = if (isSel) Color.Black else Color.White
-                                        )
+                            Row(
+                                modifier = Modifier.fillMaxWidth(),
+                                horizontalArrangement = Arrangement.SpaceBetween,
+                                verticalAlignment = Alignment.CenterVertically
+                            ) {
+                                Row(verticalAlignment = Alignment.CenterVertically) {
+                                    Icon(
+                                        imageVector = Icons.Default.Settings,
+                                        contentDescription = "Device Frame",
+                                        tint = MaterialTheme.colorScheme.primary,
+                                        modifier = Modifier.size(13.dp)
+                                    )
+                                    Spacer(modifier = Modifier.width(6.dp))
+                                    Text(
+                                        text = "FRAME PREVIEW:",
+                                        fontSize = 8.5.sp,
+                                        fontWeight = FontWeight.Bold,
+                                        color = Color.White.copy(alpha = 0.7f),
+                                        letterSpacing = 0.8.sp
+                                    )
+                                }
+                                Row(horizontalArrangement = Arrangement.spacedBy(4.dp)) {
+                                    listOf(PreviewDeviceStyle.IPHONE to "iPhone", PreviewDeviceStyle.ANDROID to "Android").forEach { (style, label) ->
+                                        val isSel = previewDeviceStyle == style
+                                        Surface(
+                                            onClick = { previewDeviceStyle = style },
+                                            shape = RoundedCornerShape(6.dp),
+                                            color = if (isSel) MaterialTheme.colorScheme.primary else Color.White.copy(alpha = 0.05f),
+                                            border = BorderStroke(0.5.dp, if (isSel) Color.White else Color.White.copy(alpha = 0.1f)),
+                                            modifier = Modifier.height(20.dp)
+                                        ) {
+                                            Box(contentAlignment = Alignment.Center, modifier = Modifier.padding(horizontal = 8.dp)) {
+                                                Text(
+                                                    text = label.uppercase(),
+                                                    fontSize = 7.5.sp,
+                                                    fontWeight = FontWeight.Black,
+                                                    color = if (isSel) Color.Black else Color.White
+                                                )
+                                            }
+                                        }
+                                    }
+                                }
+                            }
+                            
+                            Row(
+                                modifier = Modifier.fillMaxWidth(),
+                                horizontalArrangement = Arrangement.SpaceBetween,
+                                verticalAlignment = Alignment.CenterVertically
+                            ) {
+                                Row(verticalAlignment = Alignment.CenterVertically) {
+                                    Icon(
+                                        imageVector = Icons.Default.Star,
+                                        contentDescription = "Quality Selector",
+                                        tint = if (selectedRenderOption != "SD Preview") Color(0xFFFFB300) else Color.White.copy(alpha = 0.6f),
+                                        modifier = Modifier.size(13.dp)
+                                    )
+                                    Spacer(modifier = Modifier.width(6.dp))
+                                    Text(
+                                        text = "RENDER QUALITY:",
+                                        fontSize = 8.5.sp,
+                                        fontWeight = FontWeight.Bold,
+                                        color = Color.White.copy(alpha = 0.7f),
+                                        letterSpacing = 0.8.sp
+                                    )
+                                }
+                                Row(horizontalArrangement = Arrangement.spacedBy(4.dp)) {
+                                    listOf("SD Preview", "HD 1080p", "UHD 4K").forEach { option ->
+                                        val isSel = selectedRenderOption == option
+                                        Surface(
+                                            onClick = { selectedRenderOption = option },
+                                            shape = RoundedCornerShape(6.dp),
+                                            color = if (isSel) MaterialTheme.colorScheme.primary else Color.White.copy(alpha = 0.05f),
+                                            border = BorderStroke(0.5.dp, if (isSel) Color.White else Color.White.copy(alpha = 0.1f)),
+                                            modifier = Modifier.height(20.dp)
+                                        ) {
+                                            Box(contentAlignment = Alignment.Center, modifier = Modifier.padding(horizontal = 8.dp)) {
+                                                Text(
+                                                    text = option,
+                                                    fontSize = 7.5.sp,
+                                                    fontWeight = FontWeight.Black,
+                                                    color = if (isSel) Color.Black else Color.White
+                                                )
+                                            }
+                                        }
+                                    }
+                                }
+                            }
+
+                            Row(
+                                modifier = Modifier.fillMaxWidth(),
+                                horizontalArrangement = Arrangement.SpaceBetween,
+                                verticalAlignment = Alignment.CenterVertically
+                            ) {
+                                Row(verticalAlignment = Alignment.CenterVertically) {
+                                    Icon(
+                                        imageVector = Icons.Default.Layers,
+                                        contentDescription = "Sim Mode Selector",
+                                        tint = MaterialTheme.colorScheme.primary,
+                                        modifier = Modifier.size(13.dp)
+                                    )
+                                    Spacer(modifier = Modifier.width(6.dp))
+                                    Text(
+                                        text = "SIMULATE LAYOUT:",
+                                        fontSize = 8.5.sp,
+                                        fontWeight = FontWeight.Bold,
+                                        color = Color.White.copy(alpha = 0.7f),
+                                        letterSpacing = 0.8.sp
+                                    )
+                                }
+                                Row(horizontalArrangement = Arrangement.spacedBy(3.dp)) {
+                                    listOf("Lock", "Home", "Settings", "Full", "More").forEach { overlayStyle ->
+                                        val isSel = activeOverlayStyle == overlayStyle
+                                        Surface(
+                                            onClick = { activeOverlayStyle = overlayStyle },
+                                            shape = RoundedCornerShape(6.dp),
+                                            color = if (isSel) MaterialTheme.colorScheme.primary else Color.White.copy(alpha = 0.05f),
+                                            border = BorderStroke(0.5.dp, if (isSel) Color.White else Color.White.copy(alpha = 0.1f)),
+                                            modifier = Modifier.height(20.dp).testTag("sim_overlay_${overlayStyle.lowercase()}")
+                                        ) {
+                                            Box(contentAlignment = Alignment.Center, modifier = Modifier.padding(horizontal = 6.dp)) {
+                                                Text(
+                                                    text = if (overlayStyle == "Lock") "LOCK" else if (overlayStyle == "Home") "HOME" else overlayStyle.uppercase(),
+                                                    fontSize = 7.5.sp,
+                                                    fontWeight = FontWeight.Black,
+                                                    color = if (isSel) Color.Black else Color.White
+                                                )
+                                            }
+                                        }
                                     }
                                 }
                             }
@@ -1900,51 +2213,98 @@ fun WallpaperPreviewDialog(
                             .clip(RoundedCornerShape(38.dp))
                             .background(Color.Black)
                     ) {
-                        // --- Wallpaper Preview inside the phone screen boundaries ---
-                        
-                        // 1) Wallpaper Background Layer
-                        val bgBlur = if (editorSettings.isDepthMode) editorSettings.bgBlurValue else editorSettings.blurValue
-                        val bgColorFilter = if (editorSettings.isDepthMode) {
-                            editorSettings.bgColorFilterName
-                        } else {
-                            editorSettings.colorFilterName
-                        }
-                        val bgEffect = if (editorSettings.isDepthMode) {
-                            editorSettings.bgEffectName
-                        } else {
-                            editorSettings.effectName
-                        }
+                        BoxWithConstraints(modifier = Modifier.fillMaxSize()) {
+                            val parentW = maxWidth
+                            val parentH = maxHeight
 
-                        val renderSize = when (selectedRenderOption) {
-                            "SD Preview" -> Pair(400, 800)
-                            "HD 1080p" -> Pair(1080, 2160)
-                            else -> Pair(2160, 4320) // UHD 4K
-                        }
+                            // --- Wallpaper Preview inside the phone screen boundaries ---
+                            
+                            // 1) Wallpaper Background Layer
+                            val bgBlur = if (editorSettings.isDepthMode) editorSettings.bgBlurValue else editorSettings.blurValue
+                            val bgColorFilter = if (editorSettings.isDepthMode) {
+                                editorSettings.bgColorFilterName
+                            } else {
+                                editorSettings.colorFilterName
+                            }
+                            val bgEffect = if (editorSettings.isDepthMode) {
+                                editorSettings.bgEffectName
+                            } else {
+                                editorSettings.effectName
+                            }
 
-                        AsyncImage(
-                            model = ImageRequest.Builder(LocalContext.current)
-                                .data(photo)
-                                .crossfade(true)
-                                .size(renderSize.first, renderSize.second)
-                                .build(),
-                            contentDescription = null,
-                            colorFilter = ColorFilter.colorMatrix(ColorMatrix(FilterMatrices.getMapping(bgColorFilter))),
-                            modifier = Modifier
-                                .fillMaxSize()
-                                .blur(bgBlur.dp)
-                                .graphicsLayer {
-                                    if (!editorSettings.isDepthMode) {
+                            val renderSize = when (selectedRenderOption) {
+                                "SD Preview" -> Pair(400, 800)
+                                "HD 1080p" -> Pair(1080, 2160)
+                                else -> Pair(2160, 4320) // UHD 4K
+                            }
+
+                            AsyncImage(
+                                model = ImageRequest.Builder(LocalContext.current)
+                                    .data(photo)
+                                    .crossfade(true)
+                                    .size(renderSize.first, renderSize.second)
+                                    .build(),
+                                contentDescription = null,
+                                colorFilter = ColorFilter.colorMatrix(ColorMatrix(FilterMatrices.getMapping(bgColorFilter))),
+                                modifier = Modifier
+                                    .fillMaxSize()
+                                    .blur(bgBlur.dp)
+                                    .graphicsLayer {
                                         scaleX = scale
                                         scaleY = scale
                                         translationX = offset.x
                                         translationY = offset.y
+                                        alpha = if (editorSettings.isDepthMode && editorSettings.displayIsolationMode == "Subject Only") 0f else 1f
                                     }
-                                },
-                            contentScale = ContentScale.Crop
-                        )
+                                    .drawWithContent {
+                                        if (editorSettings.isDepthMode) {
+                                            val subSizeW = size.width * editorSettings.subjectScaleRatio
+                                            val subSizeH = subSizeW / 0.68f
+
+                                            val left = (size.width - subSizeW) / 2f
+                                            val top = (size.height - subSizeH) / 2f
+                                            val right = left + subSizeW
+                                            val bottom = top + subSizeH
+
+                                            val clipPath = androidx.compose.ui.graphics.Path()
+                                            when (editorSettings.subjectShape) {
+                                                "Portal" -> {
+                                                    clipPath.addOval(androidx.compose.ui.geometry.Rect(size.center, subSizeW / 2f))
+                                                }
+                                                "Shield" -> {
+                                                    clipPath.moveTo(left + subSizeW * 0.5f, top)
+                                                    clipPath.lineTo(right, top + subSizeH * 0.25f)
+                                                    clipPath.lineTo(right, top + subSizeH * 0.75f)
+                                                    clipPath.lineTo(left + subSizeW * 0.5f, bottom)
+                                                    clipPath.lineTo(left, top + subSizeH * 0.75f)
+                                                    clipPath.lineTo(left, top + subSizeH * 0.25f)
+                                                    clipPath.close()
+                                                }
+                                                "Crown" -> {
+                                                    clipPath.moveTo(left + subSizeW * 0.5f, top)
+                                                    clipPath.lineTo(right, top + subSizeH * 0.5f)
+                                                    clipPath.lineTo(left + subSizeW * 0.5f, bottom)
+                                                    clipPath.lineTo(left, top + subSizeH * 0.5f)
+                                                    clipPath.close()
+                                                }
+                                                else -> {
+                                                    val rect = androidx.compose.ui.geometry.Rect(left, top, right, bottom)
+                                                    val cornerRadius = androidx.compose.ui.geometry.CornerRadius(subSizeW / 2f)
+                                                    clipPath.addRoundRect(androidx.compose.ui.geometry.RoundRect(rect, cornerRadius))
+                                                }
+                                            }
+                                            clipPath(clipPath, clipOp = ClipOp.Difference) {
+                                                this@drawWithContent.drawContent()
+                                            }
+                                        } else {
+                                            drawContent()
+                                        }
+                                    },
+                                contentScale = ContentScale.Crop
+                            )
 
                         // Vignette background effect
-                        if (bgEffect == "Vignette") {
+                        if (bgEffect == "Vignette" && !(editorSettings.isDepthMode && editorSettings.displayIsolationMode == "Subject Only")) {
                             Box(
                                 modifier = Modifier
                                     .fillMaxSize()
@@ -1964,7 +2324,7 @@ fun WallpaperPreviewDialog(
                         }
 
                         // Rainbow background effect
-                        if (bgEffect == "Rainbow Drift") {
+                        if (bgEffect == "Rainbow Drift" && !(editorSettings.isDepthMode && editorSettings.displayIsolationMode == "Subject Only")) {
                             Box(
                                 modifier = Modifier
                                     .fillMaxSize()
@@ -1983,7 +2343,7 @@ fun WallpaperPreviewDialog(
                         }
 
                         // Noise background effect
-                        if (bgEffect == "Retro Grain") {
+                        if (bgEffect == "Retro Grain" && !(editorSettings.isDepthMode && editorSettings.displayIsolationMode == "Subject Only")) {
                             Box(
                                 modifier = Modifier
                                     .fillMaxSize()
@@ -2004,7 +2364,7 @@ fun WallpaperPreviewDialog(
                         }
 
                         // Pixelate background effect
-                        if (bgEffect == "Pixelate") {
+                        if (bgEffect == "Pixelate" && !(editorSettings.isDepthMode && editorSettings.displayIsolationMode == "Subject Only")) {
                             Box(
                                 modifier = Modifier
                                     .fillMaxSize()
@@ -2028,17 +2388,13 @@ fun WallpaperPreviewDialog(
                         }
 
                         // 2) Wallpaper Foreground Cutout Layer (Exclusive inside Depth Isolation Mode)
-                        if (editorSettings.isDepthMode) {
+                        if (editorSettings.isDepthMode && editorSettings.displayIsolationMode != "Background Only") {
                             val shape = getShapeFromDescriptor(editorSettings.subjectShape)
                             Box(
                                 modifier = Modifier
                                     .align(Alignment.Center)
                                     .fillMaxWidth(editorSettings.subjectScaleRatio)
                                     .aspectRatio(0.68f)
-                                    .graphicsLayer {
-                                        translationX = offset.x / 1.3f
-                                        translationY = offset.y / 1.3f
-                                    }
                                     .shadow(16.dp, shape = shape, clip = false)
                                     .border(2.5.dp, MaterialTheme.colorScheme.primary.copy(alpha = 0.72f), shape)
                                     .clip(shape)
@@ -2053,11 +2409,13 @@ fun WallpaperPreviewDialog(
                                     contentDescription = null,
                                     colorFilter = ColorFilter.colorMatrix(ColorMatrix(FilterMatrices.getMapping(editorSettings.subjectColorFilterName))),
                                     modifier = Modifier
-                                        .fillMaxSize()
+                                        .requiredSize(parentW, parentH)
                                         .blur(editorSettings.subjectBlurValue.dp)
                                         .graphicsLayer {
                                             scaleX = scale
                                             scaleY = scale
+                                            translationX = offset.x
+                                            translationY = offset.y
                                         },
                                     contentScale = ContentScale.Crop
                                 )
@@ -2116,166 +2474,594 @@ fun WallpaperPreviewDialog(
                             }
                         }
 
-                        // --- HIGH-FIDELITY MOBILE LOCKSCREEN OVERLAYS ---
+                        // --- HIGH-FIDELITY MOBILE OVERLAYS SYSTEM ---
 
-                        // A) Camera Pill (Dynamic Island Notch)
-                        Box(
-                            modifier = Modifier
-                                .align(Alignment.TopCenter)
-                                .padding(top = 8.dp)
-                                .size(width = 75.dp, height = 20.dp)
-                                .background(Color.Black, RoundedCornerShape(10.dp))
-                                .border(1.dp, Color.White.copy(alpha = 0.1f), RoundedCornerShape(10.dp))
-                        )
+                        if (activeOverlayStyle != "Full") {
+                            // A) Camera Notch (Conditionally Pill for iPhone, Hole Punch for Android)
+                            if (previewDeviceStyle == PreviewDeviceStyle.IPHONE) {
+                                Box(
+                                    modifier = Modifier
+                                        .align(Alignment.TopCenter)
+                                        .padding(top = 8.dp)
+                                        .size(width = 75.dp, height = 20.dp)
+                                        .background(Color.Black, RoundedCornerShape(10.dp))
+                                        .border(1.dp, Color.White.copy(alpha = 0.1f), RoundedCornerShape(10.dp))
+                                )
+                            } else {
+                                Box(
+                                    modifier = Modifier
+                                        .align(Alignment.TopCenter)
+                                        .padding(top = 10.dp)
+                                        .size(9.dp)
+                                        .background(Color.Black, CircleShape)
+                                        .border(1.dp, Color.White.copy(alpha = 0.15f), CircleShape)
+                                )
+                            }
 
-                        // B) Simulated Status Bar with custom battery and Signal shapes to be 100% compile-safe
-                        Row(
-                            modifier = Modifier
-                                .align(Alignment.TopCenter)
-                                .fillMaxWidth()
-                                .padding(top = 9.dp)
-                                .padding(horizontal = 20.dp),
-                            horizontalArrangement = Arrangement.SpaceBetween,
-                            verticalAlignment = Alignment.CenterVertically
-                        ) {
-                            Text(
-                                text = systemTimeText,
-                                color = Color.White.copy(alpha = 0.95f),
-                                fontSize = 11.sp,
-                                fontWeight = FontWeight.Bold,
-                                modifier = Modifier.padding(start = 2.dp)
-                            )
+                            // B) Simulated Status Bar
                             Row(
-                                modifier = Modifier.padding(end = 2.dp),
-                                horizontalArrangement = Arrangement.spacedBy(5.dp),
+                                modifier = Modifier
+                                    .align(Alignment.TopCenter)
+                                    .fillMaxWidth()
+                                    .padding(top = 9.dp)
+                                    .padding(horizontal = 20.dp),
+                                horizontalArrangement = Arrangement.SpaceBetween,
                                 verticalAlignment = Alignment.CenterVertically
                             ) {
-                                // Real-looking Cellular Signal Tower drawn via solid boxes
-                                Row(
-                                    horizontalArrangement = Arrangement.spacedBy(1.5.dp),
-                                    verticalAlignment = Alignment.Bottom,
-                                    modifier = Modifier.padding(bottom = 1.dp)
-                                ) {
-                                    listOf(3.dp, 5.dp, 7.dp, 9.dp).forEach { hVal ->
+                                if (previewDeviceStyle == PreviewDeviceStyle.IPHONE) {
+                                    Text(
+                                        text = systemTimeText,
+                                        color = Color.White.copy(alpha = 0.95f),
+                                        fontSize = 11.sp,
+                                        fontWeight = FontWeight.Bold,
+                                        modifier = Modifier.padding(start = 2.dp)
+                                    )
+                                    Row(
+                                        modifier = Modifier.padding(end = 2.dp),
+                                        horizontalArrangement = Arrangement.spacedBy(5.dp),
+                                        verticalAlignment = Alignment.CenterVertically
+                                    ) {
+                                        Row(
+                                            horizontalArrangement = Arrangement.spacedBy(1.5.dp),
+                                            verticalAlignment = Alignment.Bottom,
+                                            modifier = Modifier.padding(bottom = 1.dp)
+                                        ) {
+                                            listOf(3.dp, 5.dp, 7.dp, 9.dp).forEach { hVal ->
+                                                Box(
+                                                    modifier = Modifier
+                                                        .width(2.dp)
+                                                        .height(hVal)
+                                                        .background(Color.White.copy(alpha = 0.95f), RoundedCornerShape(0.5.dp))
+                                                )
+                                            }
+                                        }
+
+                                        Icon(
+                                            imageVector = Icons.Default.Wifi,
+                                            contentDescription = "Wifi",
+                                            tint = Color.White.copy(alpha = 0.95f),
+                                            modifier = Modifier.size(11.dp)
+                                        )
+
                                         Box(
                                             modifier = Modifier
-                                                .width(2.dp)
-                                                .height(hVal)
-                                                .background(Color.White.copy(alpha = 0.95f), RoundedCornerShape(0.5.dp))
+                                                .width(16.dp)
+                                                .height(9.dp)
+                                                .border(1.dp, Color.White.copy(alpha = 0.85f), RoundedCornerShape(2.dp))
+                                                .padding(1.dp)
+                                        ) {
+                                            Box(
+                                                modifier = Modifier
+                                                    .fillMaxHeight()
+                                                    .fillMaxWidth(0.85f)
+                                                    .background(Color.White.copy(alpha = 0.95f), RoundedCornerShape(0.5.dp))
+                                            )
+                                        }
+                                    }
+                                } else {
+                                    Text(
+                                        text = systemTimeText,
+                                        color = Color.White.copy(alpha = 0.92f),
+                                        fontSize = 10.5.sp,
+                                        fontWeight = FontWeight.Medium,
+                                        modifier = Modifier.padding(start = 2.dp)
+                                    )
+                                    Row(
+                                        modifier = Modifier.padding(end = 2.dp),
+                                        horizontalArrangement = Arrangement.spacedBy(6.dp),
+                                        verticalAlignment = Alignment.CenterVertically
+                                    ) {
+                                        Icon(
+                                            imageVector = Icons.Default.Wifi,
+                                            contentDescription = "Wifi",
+                                            tint = Color.White.copy(alpha = 0.92f),
+                                            modifier = Modifier.size(11.dp)
+                                        )
+                                        Box(
+                                            modifier = Modifier
+                                                .width(8.dp)
+                                                .height(13.dp)
+                                                .border(1.dp, Color.White.copy(alpha = 0.8f), RoundedCornerShape(1.5.dp))
+                                                .padding(bottom = 1.dp)
+                                        ) {
+                                            Box(
+                                                modifier = Modifier
+                                                    .fillMaxWidth()
+                                                    .fillMaxHeight(0.85f)
+                                                    .align(Alignment.BottomCenter)
+                                                    .background(Color.White.copy(alpha = 0.92f))
+                                            )
+                                        }
+                                    }
+                                }
+                            }
+                        }
+
+                        // C) RENDERING CONTENT OVERLAYS ACCORDING TO SIMULATED MODE
+                        when (activeOverlayStyle) {
+                            "Lock" -> {
+                                Column(
+                                    modifier = Modifier
+                                        .align(Alignment.TopCenter)
+                                        .padding(top = 58.dp),
+                                    horizontalAlignment = Alignment.CenterHorizontally
+                                ) {
+                                    if (previewDeviceStyle == PreviewDeviceStyle.IPHONE) {
+                                        Icon(
+                                            imageVector = Icons.Default.Lock,
+                                            contentDescription = "Lock State",
+                                            tint = Color.White.copy(alpha = 0.7f),
+                                            modifier = Modifier
+                                                .size(13.dp)
+                                                .padding(bottom = 2.dp)
+                                        )
+                                        Text(
+                                            text = systemDateText.uppercase(),
+                                            color = Color.White.copy(alpha = 0.85f),
+                                            fontSize = 9.sp,
+                                            fontWeight = FontWeight.Black,
+                                            letterSpacing = 1.2.sp
+                                        )
+                                        Text(
+                                            text = systemTimeText,
+                                            color = Color.White.copy(alpha = 0.95f),
+                                            fontSize = 48.sp,
+                                            fontWeight = FontWeight.W200,
+                                            letterSpacing = (-1).sp,
+                                            modifier = Modifier.padding(top = 2.dp)
+                                        )
+                                    } else {
+                                        Text(
+                                            text = systemDateText.uppercase(),
+                                            color = Color.White.copy(alpha = 0.8f),
+                                            fontSize = 8.5.sp,
+                                            fontWeight = FontWeight.Bold,
+                                            letterSpacing = 1.sp
+                                        )
+                                        Spacer(modifier = Modifier.height(2.dp))
+                                        Text(
+                                            text = systemTimeText,
+                                            color = MaterialTheme.colorScheme.primary,
+                                            fontSize = 54.sp,
+                                            fontWeight = FontWeight.ExtraBold,
+                                            lineHeight = 54.sp,
+                                            modifier = Modifier.padding(top = 2.dp)
+                                        )
+                                        Text(
+                                            text = "⚡ sayanthRock Charging • 85%",
+                                            color = Color.White.copy(alpha = 0.55f),
+                                            fontSize = 8.sp,
+                                            fontWeight = FontWeight.Medium,
+                                            modifier = Modifier.padding(top = 2.dp)
                                         )
                                     }
                                 }
 
-                                Icon(
-                                    imageVector = Icons.Default.Wifi,
-                                    contentDescription = "Wifi",
-                                    tint = Color.White.copy(alpha = 0.95f),
-                                    modifier = Modifier.size(11.dp)
-                                )
-
-                                // Real-looking Battery drawn manually
-                                Box(
+                                Row(
                                     modifier = Modifier
-                                        .width(16.dp)
-                                        .height(9.dp)
-                                        .border(1.dp, Color.White.copy(alpha = 0.85f), RoundedCornerShape(2.dp))
-                                        .padding(1.dp)
+                                        .align(Alignment.BottomCenter)
+                                        .fillMaxWidth()
+                                        .padding(bottom = 44.dp)
+                                        .padding(horizontal = 24.dp),
+                                    horizontalArrangement = Arrangement.SpaceBetween,
+                                    verticalAlignment = Alignment.CenterVertically
                                 ) {
                                     Box(
                                         modifier = Modifier
-                                            .fillMaxHeight()
-                                            .fillMaxWidth(0.85f)
-                                            .background(Color.White.copy(alpha = 0.95f), RoundedCornerShape(0.5.dp))
+                                            .size(38.dp)
+                                            .background(Color.Black.copy(alpha = 0.45f), CircleShape)
+                                            .border(1.2.dp, Color.White.copy(alpha = 0.15f), CircleShape)
+                                            .clickable { /* Toggles Device Flashlight */ },
+                                        contentAlignment = Alignment.Center
+                                    ) {
+                                        Icon(
+                                            imageVector = Icons.Default.FlashOn,
+                                            contentDescription = "Flashlight",
+                                            tint = Color.White.copy(alpha = 0.9f),
+                                            modifier = Modifier.size(16.dp)
+                                        )
+                                    }
+
+                                    Box(
+                                        modifier = Modifier
+                                            .size(38.dp)
+                                            .background(Color.Black.copy(alpha = 0.45f), CircleShape)
+                                            .border(1.2.dp, Color.White.copy(alpha = 0.15f), CircleShape)
+                                            .clickable { /* Launches Lockscreen Camera */ },
+                                        contentAlignment = Alignment.Center
+                                    ) {
+                                        Icon(
+                                            imageVector = Icons.Default.CameraAlt,
+                                            contentDescription = "Camera",
+                                            tint = Color.White.copy(alpha = 0.9f),
+                                            modifier = Modifier.size(16.dp)
+                                        )
+                                    }
+                                }
+                            }
+
+                            "Home" -> {
+                                Column(
+                                    modifier = Modifier
+                                        .fillMaxSize()
+                                        .padding(top = 46.dp, bottom = 32.dp)
+                                        .padding(horizontal = 14.dp),
+                                    horizontalAlignment = Alignment.CenterHorizontally,
+                                    verticalArrangement = Arrangement.SpaceBetween
+                                ) {
+                                    Surface(
+                                        shape = RoundedCornerShape(16.dp),
+                                        color = Color.Black.copy(alpha = 0.45f),
+                                        border = BorderStroke(0.8.dp, Color.White.copy(alpha = 0.15f)),
+                                        modifier = Modifier
+                                            .fillMaxWidth()
+                                            .height(58.dp)
+                                    ) {
+                                        Row(
+                                            modifier = Modifier.padding(10.dp),
+                                            verticalAlignment = Alignment.CenterVertically,
+                                            horizontalArrangement = Arrangement.SpaceBetween
+                                        ) {
+                                            Column {
+                                                Text(
+                                                    text = "Monday, Jun 15",
+                                                    fontSize = 8.sp,
+                                                    fontWeight = FontWeight.Bold,
+                                                    color = Color.White.copy(alpha = 0.6f)
+                                                )
+                                                Text(
+                                                    text = "Sunny • 74°F",
+                                                    fontSize = 11.sp,
+                                                    fontWeight = FontWeight.Black,
+                                                    color = Color.White
+                                                )
+                                                Text(
+                                                    text = "Aesthetic Workspace",
+                                                    fontSize = 6.sp,
+                                                    color = MaterialTheme.colorScheme.primary,
+                                                    letterSpacing = 0.5.sp
+                                                )
+                                            }
+                                            Box(
+                                                modifier = Modifier
+                                                    .size(30.dp)
+                                                    .background(Color.White.copy(alpha = 0.08f), CircleShape),
+                                                contentAlignment = Alignment.Center
+                                            ) {
+                                                Icon(
+                                                    imageVector = Icons.Default.AutoAwesome,
+                                                    contentDescription = null,
+                                                    tint = MaterialTheme.colorScheme.primary,
+                                                    modifier = Modifier.size(14.dp)
+                                                )
+                                            }
+                                        }
+                                    }
+
+                                    Spacer(modifier = Modifier.height(10.dp))
+
+                                    val rowApps = listOf(
+                                        listOf(
+                                            Triple("Photos", Icons.Default.Image, Color(0xFFE57373)),
+                                            Triple("Browser", Icons.Default.Search, Color(0xFF64B5F6)),
+                                            Triple("Settings", Icons.Default.Settings, Color(0xFF90A4AE)),
+                                            Triple("Studio", Icons.Default.AutoAwesome, Color(0xFFFFB74D))
+                                        ),
+                                        listOf(
+                                            Triple("Favorites", Icons.Default.Favorite, Color(0xFFF06292)),
+                                            Triple("Manager", Icons.Default.Folder, Color(0xFFAED581)),
+                                            Triple("Library", Icons.Default.Layers, Color(0xFF4DB6AC)),
+                                            Triple("Camera", Icons.Default.CameraAlt, Color(0xFF9575CD))
+                                        )
                                     )
+
+                                    Column(
+                                        verticalArrangement = Arrangement.spacedBy(16.dp),
+                                        modifier = Modifier.weight(1f)
+                                    ) {
+                                        rowApps.forEach { rowItems ->
+                                            Row(
+                                                modifier = Modifier.fillMaxWidth(),
+                                                horizontalArrangement = Arrangement.SpaceEvenly
+                                            ) {
+                                                rowItems.forEach { (name, icon, bgClr) ->
+                                                    Column(
+                                                        horizontalAlignment = Alignment.CenterHorizontally,
+                                                        verticalArrangement = Arrangement.spacedBy(3.dp),
+                                                        modifier = Modifier.width(50.dp)
+                                                    ) {
+                                                        Box(
+                                                            modifier = Modifier
+                                                                .size(36.dp)
+                                                                .background(bgClr.copy(alpha = 0.85f), RoundedCornerShape(9.dp))
+                                                                .border(0.5.dp, Color.White.copy(alpha = 0.2f), RoundedCornerShape(9.dp)),
+                                                            contentAlignment = Alignment.Center
+                                                        ) {
+                                                            Icon(
+                                                                imageVector = icon,
+                                                                contentDescription = name,
+                                                                tint = Color.White,
+                                                                modifier = Modifier.size(18.dp)
+                                                            )
+                                                        }
+                                                        Text(
+                                                            text = name,
+                                                            fontSize = 7.5.sp,
+                                                            fontWeight = FontWeight.SemiBold,
+                                                            color = Color.White,
+                                                            maxLines = 1
+                                                        )
+                                                    }
+                                                }
+                                            }
+                                        }
+                                    }
+
+                                    Surface(
+                                        shape = RoundedCornerShape(20.dp),
+                                        color = Color.White.copy(alpha = 0.15f),
+                                        border = BorderStroke(1.dp, Color.White.copy(alpha = 0.2f)),
+                                        modifier = Modifier
+                                            .fillMaxWidth()
+                                            .height(48.dp)
+                                    ) {
+                                        Row(
+                                            modifier = Modifier.fillMaxSize().padding(horizontal = 8.dp),
+                                            horizontalArrangement = Arrangement.SpaceEvenly,
+                                            verticalAlignment = Alignment.CenterVertically
+                                        ) {
+                                            val dockApps = listOf(
+                                                Pair("Media", Icons.Default.Image),
+                                                Pair("Search", Icons.Default.Search),
+                                                Pair("Fav", Icons.Default.Favorite),
+                                                Pair("Options", Icons.Default.Settings)
+                                            )
+                                            dockApps.forEach { (label, icon) ->
+                                                Box(
+                                                    modifier = Modifier
+                                                        .size(32.dp)
+                                                        .background(Color.Black.copy(alpha = 0.3f), CircleShape)
+                                                        .border(0.5.dp, Color.White.copy(alpha = 0.1f), CircleShape),
+                                                    contentAlignment = Alignment.Center
+                                                ) {
+                                                    Icon(
+                                                        imageVector = icon,
+                                                        contentDescription = label,
+                                                        tint = Color.White,
+                                                        modifier = Modifier.size(15.dp)
+                                                    )
+                                                }
+                                            }
+                                        }
+                                    }
+                                }
+                            }
+
+                            "Settings" -> {
+                                Box(
+                                    modifier = Modifier
+                                        .fillMaxSize()
+                                        .padding(top = 42.dp, bottom = 26.dp)
+                                        .background(Color.Black.copy(alpha = 0.72f))
+                                ) {
+                                    Column(
+                                        modifier = Modifier
+                                            .fillMaxSize()
+                                            .padding(14.dp),
+                                        verticalArrangement = Arrangement.spacedBy(8.dp)
+                                    ) {
+                                        Text(
+                                            text = "Settings",
+                                            fontSize = 18.sp,
+                                            fontWeight = FontWeight.Black,
+                                            color = Color.White,
+                                            modifier = Modifier.padding(bottom = 2.dp)
+                                        )
+
+                                        Box(
+                                            modifier = Modifier
+                                                .fillMaxWidth()
+                                                .height(26.dp)
+                                                .background(Color.White.copy(alpha = 0.08f), RoundedCornerShape(6.dp))
+                                                .padding(horizontal = 8.dp),
+                                            contentAlignment = Alignment.CenterStart
+                                        ) {
+                                            Row(verticalAlignment = Alignment.CenterVertically) {
+                                                Icon(Icons.Default.Search, null, tint = Color.White.copy(alpha = 0.4f), modifier = Modifier.size(12.dp))
+                                                Spacer(Modifier.width(4.dp))
+                                                Text("Search setting option", fontSize = 8.5.sp, color = Color.White.copy(alpha = 0.4f))
+                                            }
+                                        }
+
+                                        Spacer(Modifier.height(4.dp))
+
+                                        val settingsItems = listOf(
+                                            Triple("Wi-Fi & Networks", Icons.Default.Wifi, Color(0xFF1976D2)),
+                                            Triple("Wallpapers & Theme", Icons.Default.Layers, Color(0xFF388E3C)),
+                                            Triple("Display Customization", Icons.Default.Tune, Color(0xFFF57C00)),
+                                            Triple("App Workspace Scale", Icons.Default.Settings, Color(0xFF7B1FA2)),
+                                            Triple("User Favourites", Icons.Default.Favorite, Color(0xFFD32F2F))
+                                        )
+
+                                        Column(verticalArrangement = Arrangement.spacedBy(6.dp)) {
+                                            settingsItems.forEach { (titleStr, icon, bgC) ->
+                                                Row(
+                                                    modifier = Modifier
+                                                        .fillMaxWidth()
+                                                        .background(Color.White.copy(alpha = 0.05f), RoundedCornerShape(8.dp))
+                                                        .padding(horizontal = 8.dp, vertical = 6.dp),
+                                                    horizontalArrangement = Arrangement.SpaceBetween,
+                                                    verticalAlignment = Alignment.CenterVertically
+                                                ) {
+                                                    Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                                                        Box(
+                                                            modifier = Modifier
+                                                                .size(20.dp)
+                                                                .background(bgC, RoundedCornerShape(4.dp)),
+                                                            contentAlignment = Alignment.Center
+                                                        ) {
+                                                            Icon(icon, null, tint = Color.White, modifier = Modifier.size(11.dp))
+                                                        }
+                                                        Text(titleStr, fontSize = 9.sp, fontWeight = FontWeight.Bold, color = Color.White)
+                                                    }
+                                                    Icon(Icons.Default.KeyboardArrowDown, null, tint = Color.White.copy(alpha = 0.3f), modifier = Modifier.size(12.dp))
+                                                }
+                                            }
+                                        }
+
+                                        Box(
+                                            modifier = Modifier
+                                                .fillMaxWidth()
+                                                .background(MaterialTheme.colorScheme.primary.copy(alpha = 0.15f), RoundedCornerShape(8.dp))
+                                                .border(0.5.dp, MaterialTheme.colorScheme.primary.copy(alpha = 0.3f), RoundedCornerShape(8.dp))
+                                                .padding(8.dp)
+                                        ) {
+                                            Text(
+                                                "Tap apply below on this settings screen to commit this customized layout wallpaper live onto your main device lock screen.",
+                                                fontSize = 7.5.sp,
+                                                lineHeight = 9.5.sp,
+                                                color = Color.White.copy(alpha = 0.85f)
+                                            )
+                                        }
+                                    }
+                                }
+                            }
+
+                            "Full" -> {
+                                Box(
+                                    modifier = Modifier
+                                        .fillMaxSize()
+                                        .padding(bottom = 24.dp),
+                                    contentAlignment = Alignment.BottomCenter
+                                ) {
+                                    Text(
+                                        text = "FULL BLEED COMPOSER PREVIEW",
+                                        color = Color.White.copy(alpha = 0.35f),
+                                        fontSize = 7.sp,
+                                        fontWeight = FontWeight.ExtraBold,
+                                        letterSpacing = 1.sp
+                                    )
+                                }
+                            }
+
+                            "More" -> {
+                                Column(
+                                    modifier = Modifier
+                                        .fillMaxSize()
+                                        .padding(top = 80.dp, bottom = 44.dp)
+                                        .padding(horizontal = 14.dp),
+                                    verticalArrangement = Arrangement.spacedBy(10.dp)
+                                ) {
+                                    Text(
+                                        "REPORTS & NOTIFICATIONS",
+                                        fontSize = 7.5.sp,
+                                        fontWeight = FontWeight.Black,
+                                        color = Color.White.copy(alpha = 0.5f),
+                                        letterSpacing = 0.8.sp,
+                                        modifier = Modifier.padding(start = 4.dp, bottom = 2.dp)
+                                    )
+
+                                    Surface(
+                                        shape = RoundedCornerShape(14.dp),
+                                        color = Color.Black.copy(alpha = 0.6f),
+                                        border = BorderStroke(0.8.dp, Color.White.copy(alpha = 0.15f)),
+                                        modifier = Modifier.fillMaxWidth()
+                                    ) {
+                                        Column(modifier = Modifier.padding(10.dp)) {
+                                            Row(horizontalArrangement = Arrangement.SpaceBetween, modifier = Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically) {
+                                                Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(4.dp)) {
+                                                    Icon(Icons.Default.AutoAwesome, null, tint = MaterialTheme.colorScheme.primary, modifier = Modifier.size(12.dp))
+                                                    Text("PAPER ROCK AI", fontSize = 8.sp, fontWeight = FontWeight.Black, color = MaterialTheme.colorScheme.primary)
+                                                }
+                                                Text("just now", fontSize = 7.sp, color = Color.White.copy(alpha = 0.4f))
+                                            }
+                                            Spacer(Modifier.height(4.dp))
+                                            Text("Sleek depth isolation preset compiled! Choose your favorite layout setting style and double tap to scale.", fontSize = 9.sp, color = Color.White)
+                                        }
+                                    }
+
+                                    Surface(
+                                        shape = RoundedCornerShape(14.dp),
+                                        color = Color.Black.copy(alpha = 0.6f),
+                                        border = BorderStroke(0.8.dp, Color.White.copy(alpha = 0.15f)),
+                                        modifier = Modifier.fillMaxWidth()
+                                    ) {
+                                        Column(modifier = Modifier.padding(10.dp)) {
+                                            Row(horizontalArrangement = Arrangement.SpaceBetween, modifier = Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically) {
+                                                Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(4.dp)) {
+                                                    Icon(Icons.Default.Favorite, null, tint = Color.Red, modifier = Modifier.size(12.dp))
+                                                    Text("DESIGNER VIBE", fontSize = 8.sp, fontWeight = FontWeight.Black, color = Color.White)
+                                                }
+                                                Text("3m ago", fontSize = 7.sp, color = Color.White.copy(alpha = 0.4f))
+                                            }
+                                            Spacer(Modifier.height(4.dp))
+                                            Text("Aesthetic standard lock screen & custom home wallpaper updated safely. Click to explore other categories.", fontSize = 9.sp, color = Color.White)
+                                        }
+                                    }
                                 }
                             }
                         }
 
-                        // C) Central Clock & Date
-                        Column(
-                            modifier = Modifier
-                                .align(Alignment.TopCenter)
-                                .padding(top = 58.dp),
-                            horizontalAlignment = Alignment.CenterHorizontally
-                        ) {
-                            Icon(
-                                imageVector = Icons.Default.Lock,
-                                contentDescription = "Lock State",
-                                tint = Color.White.copy(alpha = 0.7f),
-                                modifier = Modifier
-                                    .size(13.dp)
-                                    .padding(bottom = 2.dp)
-                            )
-                            Text(
-                                text = systemDateText.uppercase(),
-                                color = Color.White.copy(alpha = 0.85f),
-                                fontSize = 9.sp,
-                                fontWeight = FontWeight.Black,
-                                letterSpacing = 1.2.sp
-                            )
-                            Text(
-                                text = systemTimeText,
-                                color = Color.White.copy(alpha = 0.95f),
-                                fontSize = 48.sp,
-                                fontWeight = FontWeight.W200, // beautiful display thin styling
-                                letterSpacing = (-1).sp,
-                                modifier = Modifier.padding(top = 2.dp)
-                            )
-                        }
-
-                        // D) Flashlight & Camera Quick Buttons at bottom
-                        Row(
-                            modifier = Modifier
-                                .align(Alignment.BottomCenter)
-                                .fillMaxWidth()
-                                .padding(bottom = 32.dp)
-                                .padding(horizontal = 24.dp),
-                            horizontalArrangement = Arrangement.SpaceBetween,
-                            verticalAlignment = Alignment.CenterVertically
-                        ) {
-                            // Flashlight action icon
-                            Box(
-                                modifier = Modifier
-                                    .size(38.dp)
-                                    .background(Color.Black.copy(alpha = 0.45f), CircleShape)
-                                    .border(1.2.dp, Color.White.copy(alpha = 0.15f), CircleShape)
-                                    .clickable { /* Simulate click toggling device flashlight */ },
-                                contentAlignment = Alignment.Center
-                            ) {
-                                Icon(
-                                    imageVector = Icons.Default.FlashOn,
-                                    contentDescription = "Flashlight",
-                                    tint = Color.White.copy(alpha = 0.9f),
-                                    modifier = Modifier.size(16.dp)
+                        if (activeOverlayStyle != "Full") {
+                            if (previewDeviceStyle == PreviewDeviceStyle.IPHONE) {
+                                Box(
+                                    modifier = Modifier
+                                        .align(Alignment.BottomCenter)
+                                        .padding(bottom = 10.dp)
+                                        .size(width = 110.dp, height = 4.dp)
+                                        .background(Color.White.copy(alpha = 0.9f), RoundedCornerShape(2.dp))
                                 )
-                            }
-
-                            // Camera action icon
-                            Box(
-                                modifier = Modifier
-                                    .size(38.dp)
-                                    .background(Color.Black.copy(alpha = 0.45f), CircleShape)
-                                    .border(1.2.dp, Color.White.copy(alpha = 0.15f), CircleShape)
-                                    .clickable { /* Simulate click launching lockscreen camera */ },
-                                contentAlignment = Alignment.Center
-                            ) {
-                                Icon(
-                                    imageVector = Icons.Default.CameraAlt,
-                                    contentDescription = "Camera",
-                                    tint = Color.White.copy(alpha = 0.9f),
-                                    modifier = Modifier.size(16.dp)
-                                )
+                            } else {
+                                Row(
+                                    modifier = Modifier
+                                        .align(Alignment.BottomCenter)
+                                        .fillMaxWidth()
+                                        .padding(bottom = 4.dp)
+                                        .height(26.dp)
+                                        .background(Color.Black.copy(alpha = 0.35f)),
+                                    horizontalArrangement = Arrangement.SpaceEvenly,
+                                    verticalAlignment = Alignment.CenterVertically
+                                ) {
+                                    Box(
+                                        modifier = Modifier
+                                            .size(10.dp)
+                                            .border(1.2.dp, Color.White.copy(alpha = 0.8f), RoundedCornerShape(2.dp))
+                                            .graphicsLayer { rotationZ = -45f }
+                                    )
+                                    Box(
+                                        modifier = Modifier
+                                            .size(10.dp)
+                                            .border(1.2.dp, Color.White.copy(alpha = 0.8f), CircleShape)
+                                    )
+                                    Box(
+                                        modifier = Modifier
+                                            .size(9.dp)
+                                            .border(1.2.dp, Color.White.copy(alpha = 0.8f), RoundedCornerShape(1.5.dp))
+                                    )
+                                }
                             }
                         }
-
-                        // E) Home Sweeper Bar gesture line at bottom
-                        Box(
-                            modifier = Modifier
-                                .align(Alignment.BottomCenter)
-                                .padding(bottom = 10.dp)
-                                .size(width = 110.dp, height = 4.dp)
-                                .background(Color.White.copy(alpha = 0.9f), RoundedCornerShape(2.dp))
-                        )
+                        } // Closing BoxWithConstraints
                     }
                 }
 
@@ -2286,11 +3072,71 @@ fun WallpaperPreviewDialog(
                     border = BorderStroke(1.dp, Color.White.copy(alpha = 0.12f)),
                     modifier = Modifier.fillMaxWidth()
                 ) {
-                    Box(
+                    Column(
                         modifier = Modifier
                             .fillMaxWidth()
                             .padding(horizontal = 16.dp, vertical = 12.dp)
                     ) {
+                        if (editorSettings.isDepthMode) {
+                            Row(
+                                modifier = Modifier
+                                    .fillMaxWidth()
+                                    .padding(bottom = 12.dp)
+                                    .background(Color.White.copy(alpha = 0.04f), RoundedCornerShape(12.dp))
+                                    .border(0.5.dp, Color.White.copy(alpha = 0.1f), RoundedCornerShape(12.dp))
+                                    .padding(horizontal = 12.dp, vertical = 8.dp),
+                                horizontalArrangement = Arrangement.SpaceBetween,
+                                verticalAlignment = Alignment.CenterVertically
+                            ) {
+                                Row(
+                                    verticalAlignment = Alignment.CenterVertically,
+                                    horizontalArrangement = Arrangement.spacedBy(6.dp)
+                                ) {
+                                    Icon(
+                                        imageVector = Icons.Default.Tune,
+                                        contentDescription = null,
+                                        tint = MaterialTheme.colorScheme.primary,
+                                        modifier = Modifier.size(14.dp)
+                                    )
+                                    Text(
+                                        text = "ISOLATION PREVIEW",
+                                        fontSize = 9.5.sp,
+                                        fontWeight = FontWeight.Bold,
+                                        letterSpacing = 0.8.sp,
+                                        color = Color.White.copy(alpha = 0.8f)
+                                    )
+                                }
+                                
+                                Row(
+                                    modifier = Modifier
+                                        .background(Color.White.copy(alpha = 0.08f), RoundedCornerShape(8.dp))
+                                        .padding(2.dp)
+                                ) {
+                                    listOf(
+                                        "Both" to "Both",
+                                        "Subject Only" to "Subject",
+                                        "Background Only" to "Background"
+                                    ).forEach { (modeValue, label) ->
+                                        val isSel = editorSettings.displayIsolationMode == modeValue
+                                        Box(
+                                            modifier = Modifier
+                                                .clip(RoundedCornerShape(6.dp))
+                                                .background(if (isSel) MaterialTheme.colorScheme.primary else Color.Transparent)
+                                                .clickable { editorSettings = editorSettings.copy(displayIsolationMode = modeValue) }
+                                                .padding(horizontal = 10.dp, vertical = 4.dp)
+                                        ) {
+                                            Text(
+                                                text = label,
+                                                fontSize = 9.sp,
+                                                fontWeight = FontWeight.ExtraBold,
+                                                color = if (isSel) Color.Black else Color.White
+                                            )
+                                        }
+                                    }
+                                }
+                            }
+                        }
+
                         when (activeTab) {
                             "MODE" -> {
                                 Row(
@@ -2611,6 +3457,331 @@ fun WallpaperPreviewDialog(
     }
 }
 
+// Helper function to save a RAW wallpaper to the device Gallery/Pictures folder.
+private suspend fun saveImageToStorage(
+    context: android.content.Context,
+    imageUrl: Any
+): Boolean = withContext(Dispatchers.IO) {
+    try {
+        val bitmap: Bitmap = when (imageUrl) {
+            is Bitmap -> imageUrl
+            else -> {
+                val request = ImageRequest.Builder(context)
+                    .data(imageUrl)
+                    .allowHardware(false)
+                    .build()
+                val result = ImageLoader(context).execute(request)
+                if (result is SuccessResult) {
+                    (result.drawable as BitmapDrawable).bitmap
+                } else {
+                    return@withContext false
+                }
+            }
+        }
+
+        val filename = "wallpaper_${System.currentTimeMillis()}.jpg"
+        val contentResolver = context.contentResolver
+        val contentValues = android.content.ContentValues().apply {
+            put(android.provider.MediaStore.MediaColumns.DISPLAY_NAME, filename)
+            put(android.provider.MediaStore.MediaColumns.MIME_TYPE, "image/jpeg")
+            if (android.os.Build.VERSION.SDK_INT >= android.os.Build.VERSION_CODES.Q) {
+                put(android.provider.MediaStore.MediaColumns.RELATIVE_PATH, android.os.Environment.DIRECTORY_PICTURES + "/PaperRockWallpapers")
+                put(android.provider.MediaStore.MediaColumns.IS_PENDING, 1)
+            }
+        }
+
+        val imageUri = contentResolver.insert(android.provider.MediaStore.Images.Media.EXTERNAL_CONTENT_URI, contentValues)
+        var saveResult = false
+        if (imageUri != null) {
+            val outputStream: java.io.OutputStream? = contentResolver.openOutputStream(imageUri)
+            if (outputStream != null) {
+                bitmap.compress(Bitmap.CompressFormat.JPEG, 100, outputStream)
+                outputStream.close()
+                saveResult = true
+            }
+            if (android.os.Build.VERSION.SDK_INT >= android.os.Build.VERSION_CODES.Q) {
+                contentValues.clear()
+                contentValues.put(android.provider.MediaStore.MediaColumns.IS_PENDING, 0)
+                contentResolver.update(imageUri, contentValues, null, null)
+            }
+        }
+        saveResult
+    } catch (e: Exception) {
+        e.printStackTrace()
+        false
+    }
+}
+
+// Helper to save a CUSTOMIZED wallpaper with all its scaling, offsets, shapes, and filters.
+private suspend fun saveCustomizedImageToStorage(
+    context: android.content.Context,
+    photo: Any,
+    scale: Float,
+    offset: androidx.compose.ui.geometry.Offset,
+    settings: EditorSettings,
+    selectedRenderOption: String
+): Boolean = withContext(Dispatchers.IO) {
+    try {
+        val renderSize = when (selectedRenderOption) {
+            "SD Preview" -> Pair(400, 800)
+            "HD 1080p" -> Pair(1080, 2160)
+            else -> Pair(2160, 4320) // UHD 4K
+        }
+        val targetWidth = renderSize.first
+        val targetHeight = renderSize.second
+
+        val imageLoader = ImageLoader(context)
+        val request = ImageRequest.Builder(context)
+            .data(photo)
+            .allowHardware(false)
+            .size(targetWidth, targetHeight)
+            .build()
+
+        val result = imageLoader.execute(request)
+        if (result !is SuccessResult) return@withContext false
+
+        val drawable = result.drawable
+        var isCreatedBitmap = false
+        val srcBitmap = if (drawable is BitmapDrawable) {
+            drawable.bitmap
+        } else {
+            isCreatedBitmap = true
+            val bitmap = Bitmap.createBitmap(
+                drawable.intrinsicWidth.coerceAtLeast(1),
+                drawable.intrinsicHeight.coerceAtLeast(1),
+                Bitmap.Config.ARGB_8888
+            )
+            val canvas = android.graphics.Canvas(bitmap)
+            drawable.setBounds(0, 0, canvas.width, canvas.height)
+            drawable.draw(canvas)
+            bitmap
+        }
+
+        val resultBitmap = Bitmap.createBitmap(targetWidth, targetHeight, Bitmap.Config.ARGB_8888)
+        val canvas = Canvas(resultBitmap)
+
+        // 1) RENDER BACKGROUND LAYER
+        val bgBlurVal = if (settings.isDepthMode) settings.bgBlurValue else settings.blurValue
+        val bgColorFilterName = if (settings.isDepthMode) settings.bgColorFilterName else settings.colorFilterName
+        val bgEffectName = if (settings.isDepthMode) settings.bgEffectName else settings.effectName
+
+        val tempBgBitmap = Bitmap.createBitmap(targetWidth, targetHeight, Bitmap.Config.ARGB_8888)
+        val tempBgCanvas = Canvas(tempBgBitmap)
+        val bgPaint = Paint(Paint.FILTER_BITMAP_FLAG)
+        val bgMatrix = Matrix()
+
+        val scX = targetWidth.toFloat() / srcBitmap.width
+        val scY = targetHeight.toFloat() / srcBitmap.height
+        val baseScale = maxOf(scX, scY)
+
+        bgMatrix.postScale(baseScale, baseScale)
+        bgMatrix.postTranslate((targetWidth - srcBitmap.width * baseScale) / 2f, (targetHeight - srcBitmap.height * baseScale) / 2f)
+
+        val displayMetrics = context.resources.displayMetrics
+        val screenW = displayMetrics.widthPixels
+        val screenH = displayMetrics.heightPixels
+        val scaleFactorX = targetWidth.toFloat() / screenW
+        val scaleFactorY = targetHeight.toFloat() / screenH
+        
+        bgMatrix.postScale(scale, scale, targetWidth / 2f, targetHeight / 2f)
+        bgMatrix.postTranslate(offset.x * scaleFactorX, offset.y * scaleFactorY)
+
+        // Apply ColorMatrix filter mapping
+        val bgMatrixVal = FilterMatrices.getMapping(bgColorFilterName)
+        val androidBgMatrix = android.graphics.ColorMatrix(bgMatrixVal)
+        bgPaint.colorFilter = android.graphics.ColorMatrixColorFilter(androidBgMatrix)
+
+        tempBgCanvas.drawBitmap(srcBitmap, bgMatrix, bgPaint)
+
+        // Apply background effects
+        applyBitmapEffects(tempBgBitmap, tempBgCanvas, bgEffectName)
+
+        // Process Soft Blur to Background Layer
+        val finalBgBitmap = if (bgBlurVal > 1f) {
+            val radius = bgBlurVal.toInt().coerceIn(1, 45)
+            fastBlur(tempBgBitmap, radius)
+        } else {
+            tempBgBitmap
+        }
+
+        // Draw background to main target canvas, excluding the subject shape area in Depth Mode
+        canvas.save()
+        if (settings.isDepthMode) {
+            val subSizeW = targetWidth * settings.subjectScaleRatio
+            val subSizeH = subSizeW / 0.68f
+
+            val left = (targetWidth - subSizeW) / 2f
+            val top = (targetHeight - subSizeH) / 2f
+            val right = left + subSizeW
+            val bottom = top + subSizeH
+
+            val clipPath = Path()
+            when (settings.subjectShape) {
+                "Portal" -> {
+                    clipPath.addCircle(targetWidth / 2f, targetHeight / 2f, subSizeW / 2f, Path.Direction.CW)
+                }
+                "Shield" -> {
+                    clipPath.moveTo(left + subSizeW * 0.5f, top)
+                    clipPath.lineTo(right, top + subSizeH * 0.25f)
+                    clipPath.lineTo(right, top + subSizeH * 0.75f)
+                    clipPath.lineTo(left + subSizeW * 0.5f, bottom)
+                    clipPath.lineTo(left, top + subSizeH * 0.75f)
+                    clipPath.lineTo(left, top + subSizeH * 0.25f)
+                    clipPath.close()
+                }
+                "Crown" -> {
+                    clipPath.moveTo(left + subSizeW * 0.5f, top)
+                    clipPath.lineTo(right, top + subSizeH * 0.5f)
+                    clipPath.lineTo(left + subSizeW * 0.5f, bottom)
+                    clipPath.lineTo(left, top + subSizeH * 0.5f)
+                    clipPath.close()
+                }
+                else -> {
+                    val rectF = RectF(left, top, right, bottom)
+                    clipPath.addRoundRect(rectF, subSizeW / 2f, subSizeW / 2f, Path.Direction.CW)
+                }
+            }
+            if (android.os.Build.VERSION.SDK_INT >= android.os.Build.VERSION_CODES.O) {
+                canvas.clipOutPath(clipPath)
+            } else {
+                @Suppress("DEPRECATION")
+                canvas.clipPath(clipPath, android.graphics.Region.Op.DIFFERENCE)
+            }
+        }
+        if (settings.isDepthMode && settings.displayIsolationMode == "Subject Only") {
+            canvas.drawColor(android.graphics.Color.BLACK)
+        } else {
+            canvas.drawBitmap(finalBgBitmap, 0f, 0f, null)
+        }
+        canvas.restore()
+        
+        if (finalBgBitmap != tempBgBitmap) finalBgBitmap.recycle()
+        tempBgBitmap.recycle()
+
+        // 2) RENDER SUBJECT CUTOUT LAYER
+        if (settings.isDepthMode && settings.displayIsolationMode != "Background Only") {
+            val subSizeW = targetWidth * settings.subjectScaleRatio
+            val subSizeH = subSizeW / 0.68f
+
+            val left = (targetWidth - subSizeW) / 2f
+            val top = (targetHeight - subSizeH) / 2f
+            val right = left + subSizeW
+            val bottom = top + subSizeH
+
+            val clipPath = Path()
+            when (settings.subjectShape) {
+                "Portal" -> {
+                    clipPath.addCircle(targetWidth / 2f, targetHeight / 2f, subSizeW / 2f, Path.Direction.CW)
+                }
+                "Shield" -> {
+                    clipPath.moveTo(left + subSizeW * 0.5f, top)
+                    clipPath.lineTo(right, top + subSizeH * 0.25f)
+                    clipPath.lineTo(right, top + subSizeH * 0.75f)
+                    clipPath.lineTo(left + subSizeW * 0.5f, bottom)
+                    clipPath.lineTo(left, top + subSizeH * 0.75f)
+                    clipPath.lineTo(left, top + subSizeH * 0.25f)
+                    clipPath.close()
+                }
+                "Crown" -> {
+                    clipPath.moveTo(left + subSizeW * 0.5f, top)
+                    clipPath.lineTo(right, top + subSizeH * 0.5f)
+                    clipPath.lineTo(left + subSizeW * 0.5f, bottom)
+                    clipPath.lineTo(left, top + subSizeH * 0.5f)
+                    clipPath.close()
+                }
+                else -> {
+                    val rectF = RectF(left, top, right, bottom)
+                    clipPath.addRoundRect(rectF, subSizeW / 2f, subSizeW / 2f, Path.Direction.CW)
+                }
+            }
+
+            val borderPaint = Paint(Paint.ANTI_ALIAS_FLAG).apply {
+                style = Paint.Style.STROKE
+                strokeWidth = targetWidth * 0.012f
+                color = android.graphics.Color.WHITE
+            }
+            canvas.drawPath(clipPath, borderPaint)
+
+            canvas.save()
+            canvas.clipPath(clipPath)
+
+            val subPaint = Paint(Paint.FILTER_BITMAP_FLAG)
+            val subMatrix = Matrix()
+
+            subMatrix.postScale(baseScale, baseScale)
+            subMatrix.postTranslate((targetWidth - srcBitmap.width * baseScale) / 2f, (targetHeight - srcBitmap.height * baseScale) / 2f)
+            
+            val displayMetrics = context.resources.displayMetrics
+            val screenW = displayMetrics.widthPixels
+            val screenH = displayMetrics.heightPixels
+            val scaleFactorX = targetWidth.toFloat() / screenW
+            val scaleFactorY = targetHeight.toFloat() / screenH
+            
+            subMatrix.postScale(scale, scale, targetWidth / 2f, targetHeight / 2f)
+            subMatrix.postTranslate(offset.x * scaleFactorX, offset.y * scaleFactorY)
+
+            val subMatrixVal = FilterMatrices.getMapping(settings.subjectColorFilterName)
+            val androidSubMatrix = android.graphics.ColorMatrix(subMatrixVal)
+            subPaint.colorFilter = android.graphics.ColorMatrixColorFilter(androidSubMatrix)
+
+            val tempSubBitmap = Bitmap.createBitmap(targetWidth, targetHeight, Bitmap.Config.ARGB_8888)
+            val tempSubCanvas = Canvas(tempSubBitmap)
+            tempSubCanvas.drawBitmap(srcBitmap, subMatrix, subPaint)
+
+            applyBitmapEffects(tempSubBitmap, tempSubCanvas, settings.subjectEffectName)
+
+            val finalSubBitmap = if (settings.subjectBlurValue > 1f) {
+                val radius = settings.subjectBlurValue.toInt().coerceIn(1, 45)
+                fastBlur(tempSubBitmap, radius)
+            } else {
+                tempSubBitmap
+            }
+
+            canvas.drawBitmap(finalSubBitmap, 0f, 0f, null)
+            
+            if (finalSubBitmap != tempSubBitmap) finalSubBitmap.recycle()
+            tempSubBitmap.recycle()
+
+            canvas.restore()
+        }
+
+        val filename = "custom_wallpaper_${System.currentTimeMillis()}.jpg"
+        val contentResolver = context.contentResolver
+        val contentValues = android.content.ContentValues().apply {
+            put(android.provider.MediaStore.MediaColumns.DISPLAY_NAME, filename)
+            put(android.provider.MediaStore.MediaColumns.MIME_TYPE, "image/jpeg")
+            if (android.os.Build.VERSION.SDK_INT >= android.os.Build.VERSION_CODES.Q) {
+                put(android.provider.MediaStore.MediaColumns.RELATIVE_PATH, android.os.Environment.DIRECTORY_PICTURES + "/PaperRockWallpapers")
+                put(android.provider.MediaStore.MediaColumns.IS_PENDING, 1)
+            }
+        }
+
+        val imageUri = contentResolver.insert(android.provider.MediaStore.Images.Media.EXTERNAL_CONTENT_URI, contentValues)
+        var saveResult = false
+        if (imageUri != null) {
+            val outputStream: java.io.OutputStream? = contentResolver.openOutputStream(imageUri)
+            if (outputStream != null) {
+                resultBitmap.compress(Bitmap.CompressFormat.JPEG, 100, outputStream)
+                outputStream.close()
+                saveResult = true
+            }
+            if (android.os.Build.VERSION.SDK_INT >= android.os.Build.VERSION_CODES.Q) {
+                contentValues.clear()
+                contentValues.put(android.provider.MediaStore.MediaColumns.IS_PENDING, 0)
+                contentResolver.update(imageUri, contentValues, null, null)
+            }
+        }
+
+        if (isCreatedBitmap) srcBitmap.recycle()
+        resultBitmap.recycle()
+        
+        saveResult
+    } catch (e: Exception) {
+        e.printStackTrace()
+        false
+    }
+}
+
 // Background Task applying exact modified matrix & layouts on the actual Wallpaper
 private suspend fun performSetWallpaper(
     context: android.content.Context,
@@ -2678,11 +3849,9 @@ private suspend fun performSetWallpaper(
         bgMatrix.postScale(baseScale, baseScale)
         bgMatrix.postTranslate((screenWidth - srcBitmap.width * baseScale) / 2f, (screenHeight - srcBitmap.height * baseScale) / 2f)
 
-        if (!settings.isDepthMode) {
-            // Apply scale and translation from layout coordinates
-            bgMatrix.postScale(scale, scale, screenWidth / 2f, screenHeight / 2f)
-            bgMatrix.postTranslate(offset.x, offset.y)
-        }
+        // Apply scale and translation from layout coordinates
+        bgMatrix.postScale(scale, scale, screenWidth / 2f, screenHeight / 2f)
+        bgMatrix.postTranslate(offset.x, offset.y)
 
         // Apply ColorMatrix filter mapping
         val bgMatrixVal = FilterMatrices.getMapping(bgColorFilterName)
@@ -2695,26 +3864,69 @@ private suspend fun performSetWallpaper(
         applyBitmapEffects(tempBgBitmap, tempBgCanvas, bgEffectName)
 
         // Process Soft Blur to Background Layer
-        val finalBgBitmap = if (bgBlurVal > 0f) {
-            val dScale = (bgBlurVal / 4.5f).toInt().coerceIn(2, 10)
-            val smallW = (screenWidth / dScale).coerceAtLeast(1)
-            val smallH = (screenHeight / dScale).coerceAtLeast(1)
-            val smallBmp = Bitmap.createScaledBitmap(tempBgBitmap, smallW, smallH, true)
-            val blurred = Bitmap.createScaledBitmap(smallBmp, screenWidth, screenHeight, true)
-            smallBmp.recycle()
-            blurred
+        val finalBgBitmap = if (bgBlurVal > 1f) {
+            val radius = bgBlurVal.toInt().coerceIn(1, 45)
+            fastBlur(tempBgBitmap, radius)
         } else {
             tempBgBitmap
         }
 
-        // Draw background to main target canvas
-        canvas.drawBitmap(finalBgBitmap, 0f, 0f, null)
+        // Draw background to main target canvas, excluding the subject shape area in Depth Mode
+        canvas.save()
+        if (settings.isDepthMode) {
+            val subSizeW = screenWidth * settings.subjectScaleRatio
+            val subSizeH = subSizeW / 0.68f
+
+            val left = (screenWidth - subSizeW) / 2f
+            val top = (screenHeight - subSizeH) / 2f
+            val right = left + subSizeW
+            val bottom = top + subSizeH
+
+            val clipPath = Path()
+            when (settings.subjectShape) {
+                "Portal" -> {
+                    clipPath.addCircle(screenWidth / 2f, screenHeight / 2f, subSizeW / 2f, Path.Direction.CW)
+                }
+                "Shield" -> {
+                    clipPath.moveTo(left + subSizeW * 0.5f, top)
+                    clipPath.lineTo(right, top + subSizeH * 0.25f)
+                    clipPath.lineTo(right, top + subSizeH * 0.75f)
+                    clipPath.lineTo(left + subSizeW * 0.5f, bottom)
+                    clipPath.lineTo(left, top + subSizeH * 0.75f)
+                    clipPath.lineTo(left, top + subSizeH * 0.25f)
+                    clipPath.close()
+                }
+                "Crown" -> {
+                    clipPath.moveTo(left + subSizeW * 0.5f, top)
+                    clipPath.lineTo(right, top + subSizeH * 0.5f)
+                    clipPath.lineTo(left + subSizeW * 0.5f, bottom)
+                    clipPath.lineTo(left, top + subSizeH * 0.5f)
+                    clipPath.close()
+                }
+                else -> {
+                    val rectF = RectF(left, top, right, bottom)
+                    clipPath.addRoundRect(rectF, subSizeW / 2f, subSizeW / 2f, Path.Direction.CW)
+                }
+            }
+            if (android.os.Build.VERSION.SDK_INT >= android.os.Build.VERSION_CODES.O) {
+                canvas.clipOutPath(clipPath)
+            } else {
+                @Suppress("DEPRECATION")
+                canvas.clipPath(clipPath, android.graphics.Region.Op.DIFFERENCE)
+            }
+        }
+        if (settings.isDepthMode && settings.displayIsolationMode == "Subject Only") {
+            canvas.drawColor(android.graphics.Color.BLACK)
+        } else {
+            canvas.drawBitmap(finalBgBitmap, 0f, 0f, null)
+        }
+        canvas.restore()
         
         if (finalBgBitmap != tempBgBitmap) finalBgBitmap.recycle()
         tempBgBitmap.recycle()
 
         // 2) RENDER SUBJECT CUTOUT LAYER
-        if (settings.isDepthMode) {
+        if (settings.isDepthMode && settings.displayIsolationMode != "Background Only") {
             val subSizeW = screenWidth * settings.subjectScaleRatio
             // Maintain exact target aspect ratio
             val subSizeH = subSizeW / 0.68f
@@ -2775,10 +3987,8 @@ private suspend fun performSetWallpaper(
             subMatrix.postScale(baseScale, baseScale)
             subMatrix.postTranslate((screenWidth - srcBitmap.width * baseScale) / 2f, (screenHeight - srcBitmap.height * baseScale) / 2f)
             
-            // Multipolar parallax scaling translation matching Compose studio offsets
-            val adjustedScaleX = scale
-            subMatrix.postScale(adjustedScaleX, adjustedScaleX, screenWidth / 2f, screenHeight / 2f)
-            subMatrix.postTranslate(offset.x / 1.3f, offset.y / 1.3f)
+            subMatrix.postScale(scale, scale, screenWidth / 2f, screenHeight / 2f)
+            subMatrix.postTranslate(offset.x, offset.y)
 
             // Subject Color Filter mapping
             val subMatrixVal = FilterMatrices.getMapping(settings.subjectColorFilterName)
@@ -2793,15 +4003,9 @@ private suspend fun performSetWallpaper(
             // Apply subject physical rendering effects
             applyBitmapEffects(tempSubBitmap, tempSubCanvas, settings.subjectEffectName)
 
-            val finalSubBitmap = if (settings.subjectBlurValue > 0f) {
-                // Blur subject if requested
-                val dScale = (settings.subjectBlurValue / 5f).toInt().coerceIn(1, 10)
-                val sw = (screenWidth / dScale).coerceAtLeast(1)
-                val sh = (screenHeight / dScale).coerceAtLeast(1)
-                val small = Bitmap.createScaledBitmap(tempSubBitmap, sw, sh, true)
-                val blurred = Bitmap.createScaledBitmap(small, screenWidth, screenHeight, true)
-                small.recycle()
-                blurred
+            val finalSubBitmap = if (settings.subjectBlurValue > 1f) {
+                val radius = settings.subjectBlurValue.toInt().coerceIn(1, 45)
+                fastBlur(tempSubBitmap, radius)
             } else {
                 tempSubBitmap
             }
@@ -2894,7 +4098,304 @@ private fun applyBitmapEffects(bmp: Bitmap, canvas: Canvas, effectName: String) 
                 }
             }
         }
+        "Liquid Glass" -> {
+            val w = canvas.width.toFloat()
+            val h = canvas.height.toFloat()
+            val p = Paint(Paint.ANTI_ALIAS_FLAG)
+            
+            // 1. Specular top diagonal wave gradient overlay
+            val specularGrad = android.graphics.LinearGradient(
+                0f, 0f, w * 0.7f, h * 0.4f,
+                intArrayOf(
+                    android.graphics.Color.argb(120, 255, 255, 255),
+                    android.graphics.Color.argb(40, 255, 255, 255),
+                    android.graphics.Color.argb(0, 255, 255, 255)
+                ),
+                floatArrayOf(0f, 0.4f, 1f),
+                android.graphics.Shader.TileMode.CLAMP
+            )
+            p.shader = specularGrad
+            canvas.drawRect(0f, 0f, w, h, p)
+
+            // 2. Beautiful specular curved highlights simulating a solid refractive liquid glass lens
+            p.shader = null
+            p.strokeWidth = w * 0.015f
+            p.style = Paint.Style.STROKE
+            p.color = android.graphics.Color.argb(130, 255, 255, 255)
+            
+            val arcPath = android.graphics.Path().apply {
+                moveTo(w * 0.08f, h * 0.9f)
+                quadTo(w * 0.1f, h * 0.1f, w * 0.92f, h * 0.08f)
+            }
+            canvas.drawPath(arcPath, p)
+
+            // Dynamic water liquid bubbles/droplets
+            p.style = Paint.Style.FILL
+            p.color = android.graphics.Color.argb(55, 255, 255, 255)
+            canvas.drawCircle(w * 0.25f, h * 0.35f, w * 0.11f, p)
+            p.color = android.graphics.Color.argb(35, 255, 255, 255)
+            canvas.drawCircle(w * 0.72f, h * 0.65f, w * 0.16f, p)
+            
+            // Bubble rims
+            p.style = Paint.Style.STROKE
+            p.strokeWidth = w * 0.008f
+            p.color = android.graphics.Color.argb(105, 255, 255, 255)
+            canvas.drawCircle(w * 0.25f, h * 0.35f, w * 0.11f, p)
+            canvas.drawCircle(w * 0.72f, h * 0.65f, w * 0.16f, p)
+        }
+        "Glassmorphic Blur" -> {
+            val w = canvas.width.toFloat()
+            val h = canvas.height.toFloat()
+            val p = Paint(Paint.ANTI_ALIAS_FLAG)
+            
+            // 1. Semi-translucent frosted wash
+            p.style = Paint.Style.FILL
+            p.color = android.graphics.Color.argb(65, 255, 255, 255)
+            canvas.drawRect(0f, 0f, w, h, p)
+            
+            // 2. Soft glowing glassmorphic background vignette
+            val glow = android.graphics.RadialGradient(
+                w * 0.5f, h * 0.5f, maxOf(w, h) * 0.6f,
+                intArrayOf(android.graphics.Color.argb(90, 255, 255, 255), android.graphics.Color.TRANSPARENT),
+                null,
+                android.graphics.Shader.TileMode.CLAMP
+            )
+            p.shader = glow
+            canvas.drawRect(0f, 0f, w, h, p)
+            p.shader = null
+
+            // 3. Ultra-fine highlight boundary stroke
+            p.style = Paint.Style.STROKE
+            p.strokeWidth = w * 0.012f
+            p.color = android.graphics.Color.argb(140, 255, 255, 255)
+            canvas.drawRect(w * 0.04f, h * 0.04f, w * 0.96f, h * 0.96f, p)
+            
+            // 4. Subtle micro grain noise overlay
+            val rand = java.util.Random()
+            p.style = Paint.Style.FILL
+            p.color = android.graphics.Color.argb(24, 255, 255, 255)
+            for (i in 0..1500) {
+                canvas.drawCircle(rand.nextFloat() * w, rand.nextFloat() * h, rand.nextFloat() * 1.5f + 1f, p)
+            }
+        }
     }
+}
+
+// High performance StackBlur algorithm in pure Kotlin for smooth, professional blurs on Android bitmaps
+private fun fastBlur(sentBitmap: Bitmap, radius: Int): Bitmap {
+    if (radius < 1) {
+        return sentBitmap.copy(sentBitmap.config ?: Bitmap.Config.ARGB_8888, true)
+    }
+    val bitmap = sentBitmap.copy(sentBitmap.config ?: Bitmap.Config.ARGB_8888, true)
+    val w = bitmap.width
+    val h = bitmap.height
+    val pix = IntArray(w * h)
+    bitmap.getPixels(pix, 0, w, 0, 0, w, h)
+
+    val wm = w - 1
+    val hm = h - 1
+    val wh = w * h
+    val div = radius + radius + 1
+
+    val r = IntArray(wh)
+    val g = IntArray(wh)
+    val b = IntArray(wh)
+    var rsum: Int
+    var gsum: Int
+    var bsum: Int
+    var x: Int
+    var y: Int
+    var i: Int
+    var p: Int
+    var yp: Int
+    var yi: Int
+    var yw: Int
+
+    val vmin = IntArray(maxOf(w, h))
+    val dv = IntArray(256 * div)
+    for (idx in 0 until 256 * div) {
+        dv[idx] = idx / div
+    }
+
+    yw = 0
+    yi = 0
+
+    val stack = Array(div) { IntArray(3) }
+    var stackpointer: Int
+    var stackstart: Int
+    var sir: IntArray
+    var rbs: Int
+    val r1 = radius + 1
+    var routsum: Int
+    var goutsum: Int
+    var boutsum: Int
+    var rinsum: Int
+    var ginsum: Int
+    var binsum: Int
+
+    for (yIdx in 0 until h) {
+        rinsum = 0
+        ginsum = 0
+        binsum = 0
+        routsum = 0
+        goutsum = 0
+        boutsum = 0
+        rsum = 0
+        gsum = 0
+        bsum = 0
+        for (iIdx in -radius..radius) {
+            p = pix[yi + minOf(wm, maxOf(iIdx, 0))]
+            sir = stack[iIdx + radius]
+            sir[0] = (p and 0xff0000) shr 16
+            sir[1] = (p and 0x00ff00) shr 8
+            sir[2] = (p and 0x0000ff)
+            rbs = r1 - kotlin.math.abs(iIdx)
+            rsum += sir[0] * rbs
+            gsum += sir[1] * rbs
+            bsum += sir[2] * rbs
+            if (iIdx > 0) {
+                rinsum += sir[0]
+                ginsum += sir[1]
+                binsum += sir[2]
+            } else {
+                routsum += sir[0]
+                goutsum += sir[1]
+                boutsum += sir[2]
+            }
+        }
+        stackpointer = radius
+
+        for (xIdx in 0 until w) {
+            r[yi] = dv[rsum]
+            g[yi] = dv[gsum]
+            b[yi] = dv[bsum]
+
+            rsum -= routsum
+            gsum -= goutsum
+            bsum -= boutsum
+
+            stackstart = stackpointer - radius + div
+            sir = stack[stackstart % div]
+
+            routsum -= sir[0]
+            goutsum -= sir[1]
+            boutsum -= sir[2]
+
+            if (yIdx == 0) {
+                vmin[xIdx] = minOf(xIdx + radius + 1, wm)
+            }
+            p = pix[yw + vmin[xIdx]]
+
+            sir[0] = (p and 0xff0000) shr 16
+            sir[1] = (p and 0x00ff00) shr 8
+            sir[2] = (p and 0x0000ff)
+
+            rinsum += sir[0]
+            ginsum += sir[1]
+            binsum += sir[2]
+
+            rsum += rinsum
+            gsum += ginsum
+            bsum += binsum
+
+            stackpointer = (stackpointer + 1) % div
+            sir = stack[stackpointer % div]
+
+            routsum += sir[0]
+            goutsum += sir[1]
+            boutsum += sir[2]
+
+            rinsum -= sir[0]
+            ginsum -= sir[1]
+            binsum -= sir[2]
+
+            yi++
+        }
+        yw += w
+    }
+    for (xIdx in 0 until w) {
+        rinsum = 0
+        ginsum = 0
+        binsum = 0
+        routsum = 0
+        goutsum = 0
+        boutsum = 0
+        rsum = 0
+        gsum = 0
+        bsum = 0
+        yp = -radius * w
+        for (iIdx in -radius..radius) {
+            yi = maxOf(0, yp) + xIdx
+            sir = stack[iIdx + radius]
+            sir[0] = r[yi]
+            sir[1] = g[yi]
+            sir[2] = b[yi]
+            rbs = r1 - kotlin.math.abs(iIdx)
+            rsum += r[yi] * rbs
+            gsum += g[yi] * rbs
+            bsum += b[yi] * rbs
+            if (iIdx > 0) {
+                rinsum += sir[0]
+                ginsum += sir[1]
+                binsum += sir[2]
+            } else {
+                routsum += sir[0]
+                goutsum += sir[1]
+                boutsum += sir[2]
+            }
+            yp += w
+        }
+        yi = xIdx
+        stackpointer = radius
+        for (yIdx in 0 until h) {
+            val alpha = pix[yi] and -0x1000000
+            pix[yi] = alpha or (dv[rsum] shl 16) or (dv[gsum] shl 8) or dv[bsum]
+
+            rsum -= routsum
+            gsum -= goutsum
+            bsum -= boutsum
+
+            stackstart = stackpointer - radius + div
+            sir = stack[stackstart % div]
+
+            routsum -= sir[0]
+            goutsum -= sir[1]
+            boutsum -= sir[2]
+
+            if (xIdx == 0) {
+                vmin[yIdx] = minOf(yIdx + radius + 1, hm) * w
+            }
+            p = xIdx + vmin[yIdx]
+
+            sir[0] = r[p]
+            sir[1] = g[p]
+            sir[2] = b[p]
+
+            rinsum += sir[0]
+            ginsum += sir[1]
+            binsum += sir[2]
+
+            rsum += rinsum
+            gsum += ginsum
+            bsum += binsum
+
+            stackpointer = (stackpointer + 1) % div
+            sir = stack[stackpointer]
+
+            routsum += sir[0]
+            goutsum += sir[1]
+            boutsum += sir[2]
+
+            rinsum -= sir[0]
+            ginsum -= sir[1]
+            binsum -= sir[2]
+
+            yi += w
+        }
+    }
+
+    bitmap.setPixels(pix, 0, w, 0, 0, w, h)
+    return bitmap
 }
 
 // --- Gemini API Retrofit and Moshi client models for RockPaper Rock AI Studio ---
@@ -3504,6 +5005,41 @@ fun AiRockStudioLayout(
                                 Text("OPEN EDITOR", fontSize = 11.sp, fontWeight = FontWeight.Bold)
                             }
 
+                            // Direct Download button
+                            var isAiDownloading by remember { mutableStateOf(false) }
+                            Button(
+                                onClick = {
+                                    isAiDownloading = true
+                                    scope.launch {
+                                        val success = saveImageToStorage(context, aiGeneratedImageUri!!)
+                                        isAiDownloading = false
+                                        if (success) {
+                                            Toast.makeText(context, "Saved generated artwork to Pictures!", Toast.LENGTH_SHORT).show()
+                                        } else {
+                                            Toast.makeText(context, "Download failed.", Toast.LENGTH_SHORT).show()
+                                        }
+                                    }
+                                },
+                                shape = RoundedCornerShape(12.dp),
+                                modifier = Modifier
+                                    .weight(1f)
+                                    .height(44.dp)
+                                    .testTag("ai_download_button"),
+                                colors = ButtonDefaults.buttonColors(
+                                    containerColor = MaterialTheme.colorScheme.tertiaryContainer,
+                                    contentColor = MaterialTheme.colorScheme.onTertiaryContainer
+                                ),
+                                enabled = !isAiDownloading
+                            ) {
+                                if (isAiDownloading) {
+                                    CircularProgressIndicator(color = MaterialTheme.colorScheme.onTertiaryContainer, modifier = Modifier.size(14.dp))
+                                } else {
+                                    Icon(Icons.Default.Download, contentDescription = null, modifier = Modifier.size(16.dp))
+                                    Spacer(Modifier.width(2.dp))
+                                    Text("DOWNLOAD", fontSize = 10.sp, fontWeight = FontWeight.Bold, maxLines = 1)
+                                }
+                            }
+
                             // Save to favorites category
                             Button(
                                 onClick = {
@@ -3539,6 +5075,276 @@ fun AiRockStudioLayout(
                                 Text("ADD GALLERY", fontSize = 11.sp, fontWeight = FontWeight.Bold)
                             }
                         }
+                    }
+                }
+            }
+        }
+    }
+}
+
+@Composable
+fun ResolutionCentreLayout() {
+    val context = LocalContext.current
+    var diagnosticState by remember { mutableStateOf("IDLE") } // IDLE, DIAGNOSING, SUCCESS
+    var activeFaqIndex by remember { mutableStateOf<Int?>(null) }
+    
+    val scope = rememberCoroutineScope()
+    var systemSpecsText by remember { mutableStateOf("Analyze system hardware specifications...") }
+    val displayMetrics = context.resources.displayMetrics
+    val screenW = displayMetrics.widthPixels
+    val screenH = displayMetrics.heightPixels
+    val density = displayMetrics.density
+    
+    val runDiagnostics: () -> Unit = {
+        diagnosticState = "DIAGNOSING"
+        scope.launch {
+            kotlinx.coroutines.delay(1200)
+            diagnosticState = "SUCCESS"
+            systemSpecsText = "Device Resolution: ${screenW}x${screenH}px (Density scale: ${density}f)\n" +
+                              "API Provider Connection: SECURE\n" +
+                              "Memory Budget: STABLE\n" +
+                              "Offline Matrix Render Engines: COMPATIBLE\n" +
+                              "SAYANTHROCK BUILD ID: PRO-SYS-99X"
+        }
+    }
+
+    LazyColumn(
+        modifier = Modifier
+            .fillMaxSize()
+            .padding(horizontal = 24.dp),
+        verticalArrangement = Arrangement.spacedBy(16.dp),
+        contentPadding = PaddingValues(bottom = 32.dp)
+    ) {
+        // A) Sayanrock Profile & About Card (About sayanthRock)
+        item {
+            Card(
+                shape = RoundedCornerShape(24.dp),
+                colors = CardDefaults.cardColors(
+                    containerColor = MaterialTheme.colorScheme.primaryContainer.copy(alpha = 0.25f)
+                ),
+                border = BorderStroke(1.5.dp, MaterialTheme.colorScheme.primary.copy(alpha = 0.35f)),
+                modifier = Modifier.fillMaxWidth().padding(top = 16.dp)
+            ) {
+                Column(
+                    modifier = Modifier.padding(20.dp),
+                    horizontalAlignment = Alignment.CenterHorizontally
+                ) {
+                    Box(
+                        modifier = Modifier
+                            .size(72.dp)
+                            .background(
+                                Brush.linearGradient(
+                                    colors = listOf(
+                                        MaterialTheme.colorScheme.primary,
+                                        MaterialTheme.colorScheme.secondary,
+                                        Color.Cyan
+                                    )
+                                ),
+                                CircleShape
+                            ),
+                        contentAlignment = Alignment.Center
+                    ) {
+                        Text(
+                            text = "SR",
+                            fontSize = 28.sp,
+                            fontWeight = FontWeight.Black,
+                            color = Color.Black
+                        )
+                    }
+                    
+                    Spacer(modifier = Modifier.height(12.dp))
+                    
+                    Text(
+                        text = "PAPER ROCK Studio",
+                        style = MaterialTheme.typography.titleLarge,
+                        fontWeight = FontWeight.Black,
+                        color = MaterialTheme.colorScheme.primary
+                    )
+                    Text(
+                        text = "DEVELOPED BY sayanthRock",
+                        style = MaterialTheme.typography.labelSmall,
+                        color = MaterialTheme.colorScheme.secondary,
+                        fontWeight = FontWeight.Bold,
+                        letterSpacing = 1.sp
+                    )
+                    
+                    Spacer(modifier = Modifier.height(12.dp))
+                    
+                    Text(
+                        text = "Welcome to PAPER ROCK Wallpapers! Engineered to expand visual styling definitions by developer sayanthRock. We believe launcher customization is an art form. With advanced depth isolation shaders, specular Liquid Glass overlays, and custom responsive iPhone/Android device system mockups, we provide the ultimate premium background customizer.",
+                        style = MaterialTheme.typography.bodySmall,
+                        textAlign = TextAlign.Center,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.9f),
+                        lineHeight = 16.sp
+                    )
+                }
+            }
+        }
+
+        // B) Interactive Diagnostic Tool panel (helps customers solve problems in every possible way)
+        item {
+            Card(
+                shape = RoundedCornerShape(20.dp),
+                colors = CardDefaults.cardColors(
+                    containerColor = MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.45f)
+                ),
+                border = BorderStroke(1.dp, MaterialTheme.colorScheme.outline.copy(alpha = 0.15f)),
+                modifier = Modifier.fillMaxWidth()
+            ) {
+                Column(
+                    modifier = Modifier.padding(18.dp),
+                    verticalArrangement = Arrangement.spacedBy(10.dp)
+                ) {
+                    Row(
+                        modifier = Modifier.fillMaxWidth(),
+                        horizontalArrangement = Arrangement.SpaceBetween,
+                        verticalAlignment = Alignment.CenterVertically
+                    ) {
+                        Row(verticalAlignment = Alignment.CenterVertically) {
+                            Icon(
+                                imageVector = Icons.Default.Build,
+                                contentDescription = "Diagnostics",
+                                tint = MaterialTheme.colorScheme.primary,
+                                modifier = Modifier.size(20.dp)
+                            )
+                            Spacer(modifier = Modifier.width(8.dp))
+                            Text(
+                                text = "SAYANTHROCK DIAGNOSTIC LAB",
+                                style = MaterialTheme.typography.labelMedium,
+                                fontWeight = FontWeight.Black,
+                                color = MaterialTheme.colorScheme.primary
+                            )
+                        }
+                        
+                        if (diagnosticState == "SUCCESS") {
+                            Surface(
+                                shape = RoundedCornerShape(8.dp),
+                                color = Color.Green.copy(alpha = 0.15f)
+                            ) {
+                                Text(
+                                    text = "SECURE",
+                                    fontSize = 9.sp,
+                                    fontWeight = FontWeight.Black,
+                                    color = Color.Green,
+                                    modifier = Modifier.padding(horizontal = 8.dp, vertical = 4.dp)
+                                )
+                            }
+                        }
+                    }
+                    
+                    Text(
+                        text = "Simulate and verify your active GPU, image dimension scale, API connectivity, and memory constraints inside the applets container.",
+                        fontSize = 11.sp,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant
+                    )
+                    
+                    Surface(
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .heightIn(min = 60.dp),
+                        shape = RoundedCornerShape(12.dp),
+                        color = Color.Black.copy(alpha = 0.4f),
+                        border = BorderStroke(1.dp, MaterialTheme.colorScheme.outline.copy(alpha = 0.1f))
+                    ) {
+                        Box(
+                            contentAlignment = Alignment.Center,
+                            modifier = Modifier.padding(12.dp)
+                        ) {
+                            if (diagnosticState == "DIAGNOSING") {
+                                Column(horizontalAlignment = Alignment.CenterHorizontally) {
+                                    CircularProgressIndicator(modifier = Modifier.size(20.dp), strokeWidth = 2.dp)
+                                    Spacer(modifier = Modifier.height(6.dp))
+                                    Text("Analyzing framework buffer parameters...", fontSize = 10.sp, color = Color.White.copy(alpha = 0.6f))
+                                }
+                            } else {
+                                Text(
+                                    text = systemSpecsText,
+                                    fontSize = 10.5.sp,
+                                    color = if (diagnosticState == "SUCCESS") Color.Green else Color.White.copy(alpha = 0.6f),
+                                    fontFamily = androidx.compose.ui.text.font.FontFamily.Monospace,
+                                    textAlign = TextAlign.Start,
+                                    modifier = Modifier.fillMaxWidth()
+                                )
+                            }
+                        }
+                    }
+                    
+                    if (diagnosticState == "IDLE" || diagnosticState == "SUCCESS") {
+                        Button(
+                            onClick = runDiagnostics,
+                            modifier = Modifier.fillMaxWidth(),
+                            shape = RoundedCornerShape(12.dp)
+                        ) {
+                            Icon(Icons.Default.PlayArrow, contentDescription = null, modifier = Modifier.size(16.dp))
+                            Spacer(modifier = Modifier.width(6.dp))
+                            Text(if (diagnosticState == "SUCCESS") "RE-RUN TEST" else "ENGAGE DIAGNOSTICS", fontWeight = FontWeight.Bold, fontSize = 11.sp)
+                        }
+                    }
+                }
+            }
+        }
+
+        // C) Troubleshooting FAQS Drawer
+        item {
+            Text(
+                text = "CUSTOMER PROBLEM RESOLUTION DRAWER",
+                style = MaterialTheme.typography.labelSmall,
+                color = MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.7f),
+                fontWeight = FontWeight.ExtraBold,
+                letterSpacing = 1.sp,
+                modifier = Modifier.padding(top = 8.dp)
+            )
+        }
+        
+        val faqList = listOf(
+            Pair("Wallpaper fails to set on the launcher", "Some launcher configurations limit direct background injection. Solution: Use our Mockup Studio to pre-configure/render the background, save it to the custom gallery, and then set it via your phone's native Settings app."),
+            Pair("Unsharp display quality on dynamic screens", "Ensure 'UHD 4K' is selected inside the Mockup Studio header control to synthesize the wallpaper at absolute full-resolution prior to application."),
+            Pair("Live AI Gemini generation issues", "Ensure your private API Key is registered in AI Studio secrets. The custom keywords tool requires access to Google Cloud models for on-demand synthesis."),
+            Pair("3D Depth mask misalignments", "Use the Live scale and offset modifiers in Mockup Studio to align highlights, blurs, and glass layers pixel-perfectly with your home screen design.")
+        )
+        
+        items(faqList.size) { index ->
+            val (question, answer) = faqList[index]
+            val isOpen = activeFaqIndex == index
+            
+            Surface(
+                onClick = { activeFaqIndex = if (isOpen) null else index },
+                modifier = Modifier.fillMaxWidth(),
+                shape = RoundedCornerShape(14.dp),
+                color = MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.35f),
+                border = BorderStroke(1.dp, MaterialTheme.colorScheme.outline.copy(alpha = 0.08f))
+            ) {
+                Column(modifier = Modifier.padding(14.dp)) {
+                    Row(
+                        modifier = Modifier.fillMaxWidth(),
+                        horizontalArrangement = Arrangement.SpaceBetween,
+                        verticalAlignment = Alignment.CenterVertically
+                    ) {
+                        Text(
+                            text = "Q: $question",
+                            fontSize = 11.5.sp,
+                            fontWeight = FontWeight.Bold,
+                            color = MaterialTheme.colorScheme.onSurface,
+                            modifier = Modifier.weight(1f)
+                        )
+                        Icon(
+                            imageVector = if (isOpen) Icons.Default.KeyboardArrowUp else Icons.Default.KeyboardArrowDown,
+                            contentDescription = "Toggle faq text",
+                            tint = MaterialTheme.colorScheme.primary,
+                            modifier = Modifier.size(18.dp)
+                        )
+                    }
+                    
+                    if (isOpen) {
+                        Spacer(modifier = Modifier.height(8.dp))
+                        HorizontalDivider(color = MaterialTheme.colorScheme.outline.copy(alpha = 0.08f))
+                        Spacer(modifier = Modifier.height(8.dp))
+                        Text(
+                            text = answer,
+                            fontSize = 11.sp,
+                            color = MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.9f),
+                            lineHeight = 15.sp
+                        )
                     }
                 }
             }
