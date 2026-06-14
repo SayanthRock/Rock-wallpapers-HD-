@@ -11,6 +11,8 @@ on:
 jobs:
   build:
     runs-on: ubuntu-latest
+    permissions:
+      contents: write
     env:
       GRADLE_OPTS: "-Djava.net.preferIPv4Stack=true"
       SIGNING_KEYSTORE: ${{ secrets.SIGNING_KEYSTORE }}
@@ -108,6 +110,7 @@ jobs:
         env:
           KEYSTORE_PATH: release-key.jks
           STORE_PASSWORD: ${{ secrets.SIGNINGKEYSTOREPASSWORD }}
+          KEY_ALIAS: ${{ secrets.SIGNINGKEYALIAS }}
           KEY_PASSWORD: ${{ secrets.SIGNINGKEYPASSWORD }}
           SIGNING_KEYSTORE: ${{ secrets.SIGNING_KEYSTORE }}
 
