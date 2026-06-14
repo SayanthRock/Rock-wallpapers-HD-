@@ -1717,14 +1717,15 @@ fun MainScreen(
         WallpaperPreviewDialog(
             photo = selectedPhoto!!,
             onDismiss = { showPreview = false },
-            onSetWallpaper = { scale, offset, settings ->
+            onSetWallpaper = { scale, offset, settings, type ->
                 scope.launch {
                     val success = performSetWallpaper(
                         context = context,
                         photo = selectedPhoto!!,
                         scale = scale,
                         offset = offset,
-                        settings = settings
+                        settings = settings,
+                        wallpaperType = type
                     )
                     if (success) {
                         Toast.makeText(context, "Successfully customized and applied!", Toast.LENGTH_SHORT).show()
@@ -1744,10 +1745,12 @@ fun MainScreen(
 fun WallpaperPreviewDialog(
     photo: Any,
     onDismiss: () -> Unit,
-    onSetWallpaper: (Float, androidx.compose.ui.geometry.Offset, EditorSettings) -> Unit
+    onSetWallpaper: (Float, androidx.compose.ui.geometry.Offset, EditorSettings, Int) -> Unit
 ) {
     // States
     var isSaving by remember { mutableStateOf(false) }
+    var showFullScreenPreview by remember { mutableStateOf(false) }
+    var showApplyPrompt by remember { mutableStateOf(false) }
     var scale by remember { mutableFloatStateOf(1f) }
     var offset by remember { mutableStateOf(androidx.compose.ui.geometry.Offset.Zero) }
     
@@ -1945,10 +1948,23 @@ fun WallpaperPreviewDialog(
                                     }
                                 }
 
+                                IconButton(
+                                    onClick = { showFullScreenPreview = true },
+                                    modifier = Modifier
+                                        .size(34.dp)
+                                        .background(Color.White.copy(alpha = 0.12f), CircleShape)
+                                ) {
+                                    Icon(
+                                        imageVector = Icons.Default.Fullscreen,
+                                        contentDescription = "Immersive Full Screen Preview",
+                                        tint = Color.White,
+                                        modifier = Modifier.size(20.dp)
+                                    )
+                                }
+
                                 Button(
                                     onClick = {
-                                        isSaving = true
-                                        onSetWallpaper(scale, offset, editorSettings)
+                                        showApplyPrompt = true
                                     },
                                     shape = RoundedCornerShape(12.dp),
                                     colors = ButtonDefaults.buttonColors(
@@ -3451,6 +3467,554 @@ fun WallpaperPreviewDialog(
                             }
                         }
                     }
+
+                    // 3) IMERSIVE FULL SCREEN WALLPAPER PREVIEW DIALOG
+                    if (showFullScreenPreview) {
+                        Dialog(
+                            onDismissRequest = { showFullScreenPreview = false },
+                            properties = DialogProperties(usePlatformDefaultWidth = false, dismissOnBackPress = true)
+                        ) {
+                            Box(
+                                modifier = Modifier
+                                    .fillMaxSize()
+                                    .background(Color.Black)
+                            ) {
+                                // True window edge-to-edge layout flags inside standard dialog window
+                                val dialogWindow = (androidx.compose.ui.platform.LocalView.current.parent as? android.app.Dialog)?.window
+                                if (dialogWindow != null) {
+                                    SideEffect {
+                                        dialogWindow.setLayout(
+                                            android.view.ViewGroup.LayoutParams.MATCH_PARENT,
+                                            android.view.ViewGroup.LayoutParams.MATCH_PARENT
+                                        )
+                                        dialogWindow.setFlags(
+                                            android.view.WindowManager.LayoutParams.FLAG_LAYOUT_NO_LIMITS,
+                                            android.view.WindowManager.LayoutParams.FLAG_LAYOUT_NO_LIMITS
+                                        )
+                                    }
+                                }
+
+                                // 1) Immersive Wallpaper Layer (renders exact customized setting layout)
+                                val bgBlur = if (editorSettings.isDepthMode) editorSettings.bgBlurValue else editorSettings.blurValue
+                                val bgColorFilter = if (editorSettings.isDepthMode) editorSettings.bgColorFilterName else editorSettings.colorFilterName
+                                val bgEffect = if (editorSettings.isDepthMode) editorSettings.bgEffectName else editorSettings.effectName
+
+                                val renderSize = when (selectedRenderOption) {
+                                    "SD Preview" -> Pair(400, 800)
+                                    "HD 1080p" -> Pair(1080, 2160)
+                                    else -> Pair(2160, 4320)
+                                }
+
+                                // Drag state within preview so they can preview panning
+                                var previewScale by remember { mutableFloatStateOf(scale) }
+                                var previewOffset by remember { mutableStateOf(offset) }
+                                var uiVisible by remember { mutableStateOf(true) }
+                                var activePreviewOverlayStyle by remember { mutableStateOf(activeOverlayStyle) } // Lock, Home, Full
+
+                                Box(
+                                    modifier = Modifier
+                                        .fillMaxSize()
+                                        .pointerInput(Unit) {
+                                            detectTransformGestures { _, pan, zoom, _ ->
+                                                previewScale = (previewScale * zoom).coerceIn(0.5f, 6.0f)
+                                                previewOffset += pan
+                                                // Also update parent so edits are preserved!
+                                                scale = previewScale
+                                                offset = previewOffset
+                                            }
+                                        }
+                                        .clickable(
+                                            indication = null,
+                                            interactionSource = remember { MutableInteractionSource() }
+                                        ) {
+                                            uiVisible = !uiVisible
+                                        }
+                                ) {
+                                    AsyncImage(
+                                        model = ImageRequest.Builder(LocalContext.current)
+                                            .data(photo)
+                                            .crossfade(true)
+                                            .size(renderSize.first, renderSize.second)
+                                            .build(),
+                                        contentDescription = null,
+                                        colorFilter = ColorFilter.colorMatrix(ColorMatrix(FilterMatrices.getMapping(bgColorFilter))),
+                                        modifier = Modifier
+                                            .fillMaxSize()
+                                            .blur(bgBlur.dp)
+                                            .graphicsLayer {
+                                                scaleX = previewScale
+                                                scaleY = previewScale
+                                                translationX = previewOffset.x
+                                                translationY = previewOffset.y
+                                                alpha = if (editorSettings.isDepthMode && editorSettings.displayIsolationMode == "Subject Only") 0f else 1f
+                                            },
+                                        contentScale = ContentScale.Crop
+                                    )
+
+                                    // Draw vignette background effect
+                                    if (bgEffect == "Vignette" && !(editorSettings.isDepthMode && editorSettings.displayIsolationMode == "Subject Only")) {
+                                        Box(
+                                            modifier = Modifier
+                                                .fillMaxSize()
+                                                .drawBehind {
+                                                    val r = this.size.maxDimension / 2.1f
+                                                    val grad = androidx.compose.ui.graphics.RadialGradientShader(
+                                                        colors = listOf(Color.Transparent, Color.Transparent, Color.Black.copy(alpha = 0.85f)),
+                                                        center = this.size.center,
+                                                        radius = r
+                                                    )
+                                                    drawRect(
+                                                        brush = androidx.compose.ui.graphics.ShaderBrush(grad),
+                                                        blendMode = androidx.compose.ui.graphics.BlendMode.Multiply
+                                                    )
+                                                }
+                                        )
+                                    }
+
+                                    // Draw other effects like Rainbow, Grain, Pixelate
+                                    if (bgEffect == "Rainbow Drift" && !(editorSettings.isDepthMode && editorSettings.displayIsolationMode == "Subject Only")) {
+                                        Box(
+                                            modifier = Modifier
+                                                .fillMaxSize()
+                                                .background(
+                                                    Brush.horizontalGradient(
+                                                        listOf(
+                                                            Color.Red.copy(alpha = 0.15f),
+                                                            Color.Yellow.copy(alpha = 0.12f),
+                                                            Color.Green.copy(alpha = 0.15f),
+                                                            Color.Cyan.copy(alpha = 0.15f),
+                                                            Color.Magenta.copy(alpha = 0.15f)
+                                                        )
+                                                    )
+                                                )
+                                        )
+                                    }
+
+                                    if (bgEffect == "Retro Grain" && !(editorSettings.isDepthMode && editorSettings.displayIsolationMode == "Subject Only")) {
+                                        Box(
+                                            modifier = Modifier
+                                                .fillMaxSize()
+                                                .drawBehind {
+                                                    val rand = java.util.Random()
+                                                    for (i in 0..1500) {
+                                                        val x = rand.nextFloat() * size.width
+                                                        val y = rand.nextFloat() * size.height
+                                                        val r = rand.nextFloat() * 1.5f + 0.5f
+                                                        drawCircle(
+                                                            color = Color.White.copy(alpha = rand.nextFloat() * 0.15f),
+                                                            radius = r,
+                                                            center = androidx.compose.ui.geometry.Offset(x, y)
+                                                        )
+                                                    }
+                                                }
+                                        )
+                                    }
+
+                                    if (bgEffect == "Pixelate" && !(editorSettings.isDepthMode && editorSettings.displayIsolationMode == "Subject Only")) {
+                                        Box(modifier = Modifier.fillMaxSize().drawBehind {
+                                            val sz = size.width
+                                            val div = 22f
+                                            val boxSize = sz / div
+                                            for (xIndex in 0..div.toInt()) {
+                                                for (yIndex in 0..(size.height / boxSize).toInt()) {
+                                                    if ((xIndex + yIndex) % 2 == 0) {
+                                                        drawRect(
+                                                            color = Color.Black.copy(alpha = 0.08f),
+                                                            topLeft = androidx.compose.ui.geometry.Offset(xIndex * boxSize, yIndex * boxSize),
+                                                            size = androidx.compose.ui.geometry.Size(boxSize, boxSize)
+                                                        )
+                                                    }
+                                                }
+                                            }
+                                        })
+                                    }
+
+                                    // Subject cutout layer in depth space mode
+                                    if (editorSettings.isDepthMode && editorSettings.displayIsolationMode != "Background Only") {
+                                        val shape = getShapeFromDescriptor(editorSettings.subjectShape)
+                                        Box(
+                                            modifier = Modifier
+                                                .align(Alignment.Center)
+                                                .fillMaxWidth(editorSettings.subjectScaleRatio)
+                                                .aspectRatio(0.68f)
+                                                .shadow(16.dp, shape = shape, clip = false)
+                                                .border(2.5.dp, MaterialTheme.colorScheme.primary.copy(alpha = 0.72f), shape)
+                                                .clip(shape)
+                                                .background(Color.Black)
+                                        ) {
+                                            BoxWithConstraints(modifier = Modifier.fillMaxSize()) {
+                                                val subW = maxWidth
+                                                val subH = maxHeight
+                                                AsyncImage(
+                                                    model = ImageRequest.Builder(LocalContext.current)
+                                                        .data(photo)
+                                                        .size(renderSize.first, renderSize.second)
+                                                        .crossfade(true)
+                                                        .build(),
+                                                    contentDescription = null,
+                                                    colorFilter = ColorFilter.colorMatrix(ColorMatrix(FilterMatrices.getMapping(editorSettings.subjectColorFilterName))),
+                                                    modifier = Modifier
+                                                        .requiredSize(subW * (1f / editorSettings.subjectScaleRatio), subH * (1f / editorSettings.subjectScaleRatio))
+                                                        .blur(editorSettings.subjectBlurValue.dp)
+                                                        .graphicsLayer {
+                                                            scaleX = previewScale
+                                                            scaleY = previewScale
+                                                            translationX = previewOffset.x
+                                                            translationY = previewOffset.y
+                                                        },
+                                                    contentScale = ContentScale.Crop
+                                                )
+                                            }
+                                        }
+                                    }
+
+                                    // 2) Overlays (Time, Date, Status Bar) mimicking physical operating systems
+                                    if (activePreviewOverlayStyle != "Full") {
+                                        // Simulated Status Bar
+                                        Row(
+                                            modifier = Modifier
+                                                .fillMaxWidth()
+                                                .statusBarsPadding()
+                                                .padding(horizontal = 24.dp, vertical = 8.dp),
+                                            horizontalArrangement = Arrangement.SpaceBetween,
+                                            verticalAlignment = Alignment.CenterVertically
+                                        ) {
+                                            Text(
+                                                text = systemTimeText,
+                                                color = Color.White.copy(alpha = 0.95f),
+                                                fontSize = 12.sp,
+                                                fontWeight = FontWeight.Bold
+                                            )
+                                            Row(
+                                                horizontalArrangement = Arrangement.spacedBy(6.dp),
+                                                verticalAlignment = Alignment.CenterVertically
+                                            ) {
+                                                Icon(Icons.Default.Wifi, null, tint = Color.White.copy(alpha = 0.95f), modifier = Modifier.size(12.dp))
+                                                Box(
+                                                    modifier = Modifier
+                                                        .width(18.dp)
+                                                        .height(10.dp)
+                                                        .border(1.dp, Color.White.copy(alpha = 0.85f), RoundedCornerShape(2.dp))
+                                                        .padding(1.dp)
+                                                ) {
+                                                    Box(modifier = Modifier.fillMaxHeight().fillMaxWidth(0.85f).background(Color.White.copy(alpha = 0.95f)))
+                                                }
+                                            }
+                                        }
+
+                                        // Style overlays (Lock screen vs Home screen)
+                                        if (activePreviewOverlayStyle == "Lock") {
+                                            Column(
+                                                modifier = Modifier
+                                                    .fillMaxWidth()
+                                                    .align(Alignment.TopCenter)
+                                                    .padding(top = 80.dp),
+                                                horizontalAlignment = Alignment.CenterHorizontally
+                                            ) {
+                                                Icon(Icons.Default.Lock, null, tint = Color.White.copy(alpha = 0.7f), modifier = Modifier.size(14.dp))
+                                                Spacer(modifier = Modifier.height(4.dp))
+                                                Text(
+                                                    text = systemDateText.uppercase(),
+                                                    color = Color.White.copy(alpha = 0.85f),
+                                                    fontSize = 10.sp,
+                                                    fontWeight = FontWeight.Black,
+                                                    letterSpacing = 1.5.sp
+                                                )
+                                                Text(
+                                                    text = systemTimeText,
+                                                    color = Color.White.copy(alpha = 0.95f),
+                                                    fontSize = 64.sp,
+                                                    fontWeight = FontWeight.W200,
+                                                    letterSpacing = (-1).sp
+                                                )
+                                            }
+
+                                            // Flashlight / Camera indicators at lockscreen bottom
+                                            Row(
+                                                modifier = Modifier
+                                                    .fillMaxWidth()
+                                                    .align(Alignment.BottomCenter)
+                                                    .padding(bottom = 56.dp)
+                                                    .padding(horizontal = 32.dp),
+                                                horizontalArrangement = Arrangement.SpaceBetween
+                                            ) {
+                                                Box(modifier = Modifier.size(46.dp).background(Color.Black.copy(alpha = 0.4f), CircleShape).border(1.dp, Color.White.copy(alpha = 0.2f), CircleShape), contentAlignment = Alignment.Center) {
+                                                    Icon(Icons.Default.FlashOn, null, tint = Color.White, modifier = Modifier.size(18.dp))
+                                                }
+                                                Box(modifier = Modifier.size(46.dp).background(Color.Black.copy(alpha = 0.4f), CircleShape).border(1.dp, Color.White.copy(alpha = 0.2f), CircleShape), contentAlignment = Alignment.Center) {
+                                                    Icon(Icons.Default.CameraAlt, null, tint = Color.White, modifier = Modifier.size(18.dp))
+                                                }
+                                            }
+                                        } else if (activePreviewOverlayStyle == "Home") {
+                                            Column(
+                                                modifier = Modifier
+                                                    .fillMaxSize()
+                                                    .padding(top = 90.dp, bottom = 44.dp)
+                                                    .padding(horizontal = 24.dp),
+                                                horizontalAlignment = Alignment.CenterHorizontally,
+                                                verticalArrangement = Arrangement.SpaceBetween
+                                            ) {
+                                                // Simple widget placeholder
+                                                Surface(
+                                                    shape = RoundedCornerShape(20.dp),
+                                                    color = Color.Black.copy(alpha = 0.45f),
+                                                    border = BorderStroke(1.dp, Color.White.copy(alpha = 0.15f)),
+                                                    modifier = Modifier.fillMaxWidth().height(72.dp)
+                                                ) {
+                                                    Row(modifier = Modifier.padding(14.dp), verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.SpaceBetween) {
+                                                        Column {
+                                                            Text(text = "Monday, Jun 15", fontSize = 10.sp, fontWeight = FontWeight.Bold, color = Color.White.copy(alpha = 0.6f))
+                                                            Text(text = "Sunny • 74°F", fontSize = 14.sp, fontWeight = FontWeight.Black, color = Color.White)
+                                                        }
+                                                        Icon(Icons.Default.AutoAwesome, null, tint = MaterialTheme.colorScheme.primary)
+                                                    }
+                                                }
+
+                                                // Interactive row apps or similar
+                                                Row(
+                                                    modifier = Modifier.fillMaxWidth().padding(horizontal = 12.dp),
+                                                    horizontalArrangement = Arrangement.SpaceEvenly
+                                                ) {
+                                                    val rowApps = listOf(
+                                                        Triple("Photos", Icons.Default.Image, Color(0xFFE57373)),
+                                                        Triple("Browser", Icons.Default.Search, Color(0xFF64B5F6)),
+                                                        Triple("Settings", Icons.Default.Settings, Color(0xFF90A4AE)),
+                                                        Triple("Studio", Icons.Default.AutoAwesome, Color(0xFFFFB74D))
+                                                    )
+                                                    rowApps.forEach { (name, icon, bgClr) ->
+                                                        Column(horizontalAlignment = Alignment.CenterHorizontally, verticalArrangement = Arrangement.spacedBy(4.dp)) {
+                                                            Box(modifier = Modifier.size(44.dp).background(bgClr.copy(alpha = 0.85f), RoundedCornerShape(10.dp)).border(0.5.dp, Color.White.copy(alpha = 0.2f), RoundedCornerShape(10.dp)), contentAlignment = Alignment.Center) {
+                                                                Icon(icon, null, tint = Color.White, modifier = Modifier.size(20.dp))
+                                                            }
+                                                            Text(text = name, fontSize = 9.sp, color = Color.White, fontWeight = FontWeight.Bold)
+                                                        }
+                                                    }
+                                                }
+
+                                                // Dock apps
+                                                Surface(
+                                                    shape = RoundedCornerShape(24.dp),
+                                                    color = Color.White.copy(alpha = 0.15f),
+                                                    border = BorderStroke(1.dp, Color.White.copy(alpha = 0.2f)),
+                                                    modifier = Modifier.fillMaxWidth().height(60.dp)
+                                                ) {
+                                                    Row(modifier = Modifier.fillMaxSize(), horizontalArrangement = Arrangement.SpaceEvenly, verticalAlignment = Alignment.CenterVertically) {
+                                                        listOf(Icons.Default.Image, Icons.Default.Search, Icons.Default.Favorite, Icons.Default.Settings).forEach { icon ->
+                                                            Box(modifier = Modifier.size(40.dp).background(Color.Black.copy(alpha = 0.3f), CircleShape).border(0.5.dp, Color.White.copy(alpha = 0.1f), CircleShape), contentAlignment = Alignment.Center) {
+                                                                Icon(icon, null, tint = Color.White, modifier = Modifier.size(18.dp))
+                                                            }
+                                                        }
+                                                    }
+                                                }
+                                            }
+                                        }
+                                    }
+
+                                    // Bottom Navigation Indicator bar for iPhone representation
+                                    Box(
+                                        modifier = Modifier
+                                            .align(Alignment.BottomCenter)
+                                            .padding(bottom = 12.dp)
+                                            .size(width = 120.dp, height = 5.dp)
+                                            .background(Color.White.copy(alpha = 0.9f), RoundedCornerShape(2.5.dp))
+                                    )
+                                }
+
+                                // 3) HUD control panels hovering beautifully
+                                androidx.compose.animation.AnimatedVisibility(
+                                    visible = uiVisible,
+                                    enter = fadeIn() + slideInVertically { it / 2 },
+                                    exit = fadeOut() + slideOutVertically { it / 2 },
+                                    modifier = Modifier.align(Alignment.BottomCenter)
+                                ) {
+                                    Column(
+                                        modifier = Modifier
+                                            .fillMaxWidth()
+                                            .navigationBarsPadding()
+                                            .padding(16.dp),
+                                        verticalArrangement = Arrangement.spacedBy(12.dp)
+                                    ) {
+                                        // Option select row: LOCK SCREEN, HOME SCREEN, FULL SCREEN
+                                        Surface(
+                                            shape = RoundedCornerShape(16.dp),
+                                            color = Color.Black.copy(alpha = 0.82f),
+                                            border = BorderStroke(1.dp, Color.White.copy(alpha = 0.15f)),
+                                            modifier = Modifier.align(Alignment.CenterHorizontally)
+                                        ) {
+                                            Row(
+                                                modifier = Modifier.padding(4.dp),
+                                                horizontalArrangement = Arrangement.spacedBy(4.dp)
+                                            ) {
+                                                listOf("Lock" to "LOCK SCREEN", "Home" to "HOME SCREEN", "Full" to "EMPTY WALLPAPER").forEach { (overlayCode, label) ->
+                                                    val isSelected = activePreviewOverlayStyle == overlayCode
+                                                    Box(
+                                                        modifier = Modifier
+                                                            .clip(RoundedCornerShape(12.dp))
+                                                            .background(if (isSelected) MaterialTheme.colorScheme.primary else Color.Transparent)
+                                                            .clickable { activePreviewOverlayStyle = overlayCode }
+                                                            .padding(horizontal = 14.dp, vertical = 8.dp)
+                                                    ) {
+                                                        Text(
+                                                            text = label,
+                                                            fontSize = 9.5.sp,
+                                                            fontWeight = FontWeight.Black,
+                                                            color = if (isSelected) Color.Black else Color.White
+                                                        )
+                                                    }
+                                                }
+                                            }
+                                        }
+
+                                        // Actions Row: CLOSE/BACK & SET WALLPAPER
+                                        Row(
+                                            modifier = Modifier.fillMaxWidth().padding(horizontal = 8.dp),
+                                            horizontalArrangement = Arrangement.SpaceBetween,
+                                            verticalAlignment = Alignment.CenterVertically
+                                        ) {
+                                            // Back Button
+                                            Button(
+                                                onClick = { showFullScreenPreview = false },
+                                                shape = RoundedCornerShape(16.dp),
+                                                colors = ButtonDefaults.buttonColors(containerColor = Color.Black.copy(alpha = 0.65f), contentColor = Color.White),
+                                                border = BorderStroke(1.dp, Color.White.copy(alpha = 0.2f)),
+                                                modifier = Modifier.height(48.dp)
+                                            ) {
+                                                Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                                                    Icon(Icons.Default.ArrowBack, contentDescription = "Exit Full Screen")
+                                                    Text("Studio Editor", fontWeight = FontWeight.Bold, fontSize = 13.sp)
+                                                }
+                                            }
+
+                                            // Trigger APPLY wallpaper dialog prompt
+                                            Button(
+                                                onClick = {
+                                                    showApplyPrompt = true
+                                                },
+                                                shape = RoundedCornerShape(16.dp),
+                                                colors = ButtonDefaults.buttonColors(containerColor = Color.White, contentColor = Color.Black),
+                                                modifier = Modifier.height(48.dp)
+                                            ) {
+                                                Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                                                    Icon(Icons.Default.Wallpaper, contentDescription = "Apply Wallpaper")
+                                                    Text("SET WALLPAPER", fontWeight = FontWeight.Black, fontSize = 13.sp)
+                                                }
+                                            }
+                                        }
+                                    }
+                                }
+
+                                // Help/Tap HUD on Top for a split second to explain UI interaction
+                                var showHelpBanner by remember { mutableStateOf(true) }
+                                LaunchedEffect(Unit) {
+                                    kotlinx.coroutines.delay(3500)
+                                    showHelpBanner = false
+                                }
+                                androidx.compose.animation.AnimatedVisibility(
+                                    visible = showHelpBanner && uiVisible,
+                                    enter = fadeIn(),
+                                    exit = fadeOut(),
+                                    modifier = Modifier.align(Alignment.TopCenter).padding(top = 60.dp)
+                                ) {
+                                    Surface(
+                                        shape = RoundedCornerShape(12.dp),
+                                        color = Color.Black.copy(alpha = 0.8f),
+                                        border = BorderStroke(0.6.dp, Color.White.copy(alpha = 0.15f))
+                                    ) {
+                                        Text(
+                                            text = "💡 Tap empty space to toggle controls. Drag/pinch to edit layout.",
+                                            color = Color.White.copy(alpha = 0.9f),
+                                            fontSize = 8.5.sp,
+                                            fontWeight = FontWeight.Bold,
+                                            modifier = Modifier.padding(horizontal = 12.dp, vertical = 6.dp)
+                                        )
+                                    }
+                                }
+                            }
+                        }
+                    }
+
+                    // 4) AESTHETIC WALLPAPER TARGET SET PROMPT (Home Screen, Lock Screen, Both)
+                    if (showApplyPrompt) {
+                        Dialog(onDismissRequest = { showApplyPrompt = false }) {
+                            Card(
+                                shape = RoundedCornerShape(24.dp),
+                                colors = CardDefaults.cardColors(containerColor = Color(0xFF16161C)),
+                                border = BorderStroke(1.dp, Color.White.copy(alpha = 0.12f)),
+                                modifier = Modifier.fillMaxWidth().padding(16.dp)
+                            ) {
+                                Column(
+                                    modifier = Modifier.padding(24.dp),
+                                    horizontalAlignment = Alignment.CenterHorizontally,
+                                    verticalArrangement = Arrangement.spacedBy(16.dp)
+                                ) {
+                                    Icon(
+                                        imageVector = Icons.Default.Wallpaper,
+                                        contentDescription = null,
+                                        tint = MaterialTheme.colorScheme.primary,
+                                        modifier = Modifier.size(40.dp)
+                                    )
+                                    Text(
+                                        text = "Apply Wallpaper",
+                                        style = MaterialTheme.typography.titleLarge.copy(fontWeight = FontWeight.Bold, color = Color.White)
+                                    )
+                                    Text(
+                                        text = "Where would you like to set your premium custom-themed background design?",
+                                        style = MaterialTheme.typography.bodyMedium,
+                                        color = Color.White.copy(alpha = 0.7f),
+                                        textAlign = TextAlign.Center
+                                    )
+                                    
+                                    Spacer(modifier = Modifier.height(8.dp))
+                                    
+                                    // Prompt Options List
+                                    Column(
+                                        verticalArrangement = Arrangement.spacedBy(10.dp),
+                                        modifier = Modifier.fillMaxWidth()
+                                    ) {
+                                        val promptOptions = listOf(
+                                            Triple("Home Screen Only", Icons.Default.Home, WallpaperManager.FLAG_SYSTEM),
+                                            Triple("Lock Screen Only", Icons.Default.Lock, WallpaperManager.FLAG_LOCK),
+                                            Triple("Both Home & Lock", Icons.Default.Layers, WallpaperManager.FLAG_SYSTEM or WallpaperManager.FLAG_LOCK)
+                                        )
+                                        
+                                        promptOptions.forEach { (label, icon, typeFlag) ->
+                                            Button(
+                                                onClick = {
+                                                    isSaving = true
+                                                    showApplyPrompt = false
+                                                    onSetWallpaper(scale, offset, editorSettings, typeFlag)
+                                                },
+                                                shape = RoundedCornerShape(14.dp),
+                                                colors = ButtonDefaults.buttonColors(
+                                                    containerColor = Color.White.copy(alpha = 0.08f),
+                                                    contentColor = Color.White
+                                                ),
+                                                border = BorderStroke(1.dp, Color.White.copy(alpha = 0.15f)),
+                                                modifier = Modifier.fillMaxWidth().height(48.dp)
+                                            ) {
+                                                Row(
+                                                    modifier = Modifier.fillMaxWidth(),
+                                                    verticalAlignment = Alignment.CenterVertically,
+                                                    horizontalArrangement = Arrangement.Start
+                                                ) {
+                                                    Icon(icon, contentDescription = null, tint = MaterialTheme.colorScheme.primary, modifier = Modifier.size(18.dp))
+                                                    Spacer(modifier = Modifier.width(12.dp))
+                                                    Text(label, fontWeight = FontWeight.Bold, fontSize = 14.sp)
+                                                }
+                                            }
+                                        }
+                                    }
+                                    
+                                    TextButton(
+                                        onClick = { showApplyPrompt = false },
+                                        modifier = Modifier.align(Alignment.CenterHorizontally)
+                                    ) {
+                                        Text("CANCEL", fontWeight = FontWeight.Bold, color = MaterialTheme.colorScheme.primary)
+                                    }
+                                }
+                            }
+                        }
+                    }
                 }
             }
         }
@@ -3788,7 +4352,8 @@ private suspend fun performSetWallpaper(
     photo: Any,
     scale: Float,
     offset: androidx.compose.ui.geometry.Offset,
-    settings: EditorSettings
+    settings: EditorSettings,
+    wallpaperType: Int
 ): Boolean = withContext(Dispatchers.IO) {
     try {
         val metrics = context.resources.displayMetrics
@@ -4018,7 +4583,16 @@ private suspend fun performSetWallpaper(
             canvas.restore()
         }
 
-        wallpaperManager.setBitmap(resultBitmap)
+        if (android.os.Build.VERSION.SDK_INT >= android.os.Build.VERSION_CODES.N) {
+            try {
+                wallpaperManager.setBitmap(resultBitmap, null, true, wallpaperType)
+            } catch (e: Exception) {
+                // Fallback in case of specific permission error on certain devices with setBitmap (which) API
+                wallpaperManager.setBitmap(resultBitmap)
+            }
+        } else {
+            wallpaperManager.setBitmap(resultBitmap)
+        }
 
         // Memory Recycling cleanup
         if (isCreatedBitmap) srcBitmap.recycle()
