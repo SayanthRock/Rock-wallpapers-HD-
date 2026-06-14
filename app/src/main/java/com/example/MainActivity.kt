@@ -44,6 +44,8 @@ import androidx.compose.foundation.pager.rememberPagerState
 import androidx.compose.material3.*
 import androidx.compose.material3.TabRowDefaults.tabIndicatorOffset
 import androidx.compose.runtime.*
+import androidx.compose.material3.pulltorefresh.PullToRefreshBox
+import androidx.compose.material3.pulltorefresh.rememberPullToRefreshState
 import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
@@ -316,6 +318,7 @@ fun MainScreen(
     var aiAspectRatio by remember { mutableStateOf("9:16") }
     var aiImageSize by remember { mutableStateOf("1K") }
     var aiErrorMessage by remember { mutableStateOf<String?>(null) }
+    var isRefreshing by remember { mutableStateOf(false) }
 
     val categories = listOf("Liquid Glass", "Subjects", "Backgrounds", "Nature", "Textures", "Saved", "Custom", "Resolution Centre", "AI Studio")
 
@@ -1007,16 +1010,87 @@ fun MainScreen(
                         selectedCategorySetter = { selectedCategory = it }
                     )
                 }
-            } else if (filteredWallpapers.isEmpty()) {
-                // Interactive luxurious Empty Search or Saved State
-                Column(
-                    modifier = Modifier
-                        .weight(1f)
-                        .fillMaxWidth()
-                        .padding(24.dp),
-                    horizontalAlignment = Alignment.CenterHorizontally,
-                    verticalArrangement = Arrangement.Center
-                ) {
+            } else {
+                Box(modifier = Modifier.weight(1f)) {
+                    val pullState = rememberPullToRefreshState()
+                    PullToRefreshBox(
+                        state = pullState,
+                        isRefreshing = isRefreshing,
+                        onRefresh = {
+                            isRefreshing = true
+                            scope.launch {
+                                kotlinx.coroutines.delay(1500)
+                                val newAssets = listOf(
+                                    WallpaperItem(
+                                        url = "https://images.unsplash.com/photo-1579783902614-a3fb3927b6a5?q=90&w=1200&fit=crop",
+                                        category = "Liquid Glass",
+                                        title = "Prismatic Glass Sculpture",
+                                        tags = listOf("glass", "liquid", "abstract", "refreshed", "sayanthrock")
+                                    ),
+                                    WallpaperItem(
+                                        url = "https://images.unsplash.com/photo-1620641788421-7a1c342ea42e?q=90&w=1200&fit=crop",
+                                        category = "Backgrounds",
+                                        title = "Refracted Obsidian Glassmorphism",
+                                        tags = listOf("glass", "dark", "gradient", "refreshed", "sayanthrock")
+                                    ),
+                                    WallpaperItem(
+                                        url = "https://images.unsplash.com/photo-1464822759023-fed622ff2c3b?q=90&w=1200&fit=crop",
+                                        category = "Nature",
+                                        title = "Majestic Morning Peaks",
+                                        tags = listOf("mountain", "nature", "scenic", "refreshed", "sayanthrock")
+                                    ),
+                                    WallpaperItem(
+                                        url = "https://images.unsplash.com/photo-1546776310-eef45dd6d63c?q=90&w=1200&fit=crop",
+                                        category = "Subjects",
+                                        title = "Cute Companion Robot",
+                                        tags = listOf("toy", "robot", "cute", "refreshed", "sayanthrock")
+                                    ),
+                                    WallpaperItem(
+                                        url = "https://images.unsplash.com/photo-1550745165-9bc0b252726f?q=90&w=1200&fit=crop",
+                                        category = "Subjects",
+                                        title = "Vibrant Retro Tech Desk",
+                                        tags = listOf("retro", "tech", "keyboard", "neon", "refreshed", "sayanthrock")
+                                    ),
+                                    WallpaperItem(
+                                        url = "https://images.unsplash.com/photo-1579546929518-9e396f3cc809?q=90&w=1200&fit=crop",
+                                        category = "Textures",
+                                        title = "Psychedelic Liquid Mesh",
+                                        tags = listOf("texture", "liquid", "neon", "refreshed", "sayanthrock")
+                                    ),
+                                    WallpaperItem(
+                                        url = "https://images.unsplash.com/photo-1535223289827-42f1e9919769?q=90&w=1200&fit=crop",
+                                        category = "Liquid Glass",
+                                        title = "Ethereal Neon Prism Glow",
+                                        tags = listOf("glass", "prism", "cyber", "refreshed", "sayanthrock")
+                                    )
+                                )
+                                var addedCount = 0
+                                newAssets.forEach { item ->
+                                    if (!baseWallpapers.any { it.url == item.url }) {
+                                        baseWallpapers.add(0, item)
+                                        addedCount++
+                                    }
+                                }
+                                isRefreshing = false
+                                if (addedCount > 0) {
+                                    Toast.makeText(context, "Successfully updated! Loaded $addedCount premium live assets.", Toast.LENGTH_SHORT).show()
+                                } else {
+                                    Toast.makeText(context, "All premium live assets are up to date!", Toast.LENGTH_SHORT).show()
+                                }
+                            }
+                        },
+                        modifier = Modifier.fillMaxSize()
+                    ) {
+                        if (filteredWallpapers.isEmpty()) {
+                            // Interactive luxurious Empty Search or Saved State
+                            Column(
+                                modifier = Modifier
+                                    .fillMaxSize()
+                                    .padding(24.dp)
+                                    .verticalScroll(rememberScrollState()),
+                                horizontalAlignment = Alignment.CenterHorizontally,
+                                verticalArrangement = Arrangement.Center
+                            ) {
                     if (selectedCategory == "Saved" && searchQuery.trim().isEmpty()) {
                         Surface(
                             modifier = Modifier.size(80.dp),
@@ -1132,39 +1206,39 @@ fun MainScreen(
                         }
                     }
                 }
-            } else {
-                // Primary Wallpaper Grid Area with dynamic layout customization parameters
-                val targetCols = if (isWorkspaceMinimized) {
-                    when (gridLayoutSize) {
-                        "LARGE" -> 2
-                        "SMALL" -> 4
-                        else -> 3
-                    }
                 } else {
-                    when (gridLayoutSize) {
-                        "LARGE" -> 1
-                        "SMALL" -> 3
-                        else -> 2
+                    // Primary Wallpaper Grid Area with dynamic layout customization parameters
+                    val targetCols = if (isWorkspaceMinimized) {
+                        when (gridLayoutSize) {
+                            "LARGE" -> 2
+                            "SMALL" -> 4
+                            else -> 3
+                        }
+                    } else {
+                        when (gridLayoutSize) {
+                            "LARGE" -> 1
+                            "SMALL" -> 3
+                            else -> 2
+                        }
                     }
-                }
-                val targetAspect = when (cardAspectRatioName) {
-                    "Square" -> 1.0f
-                    "Wide" -> 1.33f
-                    else -> 0.72f
-                }
-                val targetRoundness = when (cardRoundnessName) {
-                    "SHARP" -> 0.dp
-                    "CIRCULAR" -> 99.dp
-                    else -> 24.dp
-                }
+                    val targetAspect = when (cardAspectRatioName) {
+                        "Square" -> 1.0f
+                        "Wide" -> 1.33f
+                        else -> 0.72f
+                    }
+                    val targetRoundness = when (cardRoundnessName) {
+                        "SHARP" -> 0.dp
+                        "CIRCULAR" -> 99.dp
+                        else -> 24.dp
+                    }
 
-                LazyVerticalGrid(
-                    columns = GridCells.Fixed(targetCols),
-                    modifier = Modifier
-                        .weight(1f)
-                        .padding(horizontal = 16.dp),
-                    contentPadding = PaddingValues(vertical = 8.dp)
-                ) {
+                    LazyVerticalGrid(
+                        columns = GridCells.Fixed(targetCols),
+                        modifier = Modifier
+                            .fillMaxSize()
+                            .padding(horizontal = 16.dp),
+                        contentPadding = PaddingValues(vertical = 8.dp)
+                    ) {
                     items(filteredWallpapers) { item ->
                         val interactionSource = remember { MutableInteractionSource() }
                         val isHovered by interactionSource.collectIsHoveredAsState()
@@ -1357,6 +1431,9 @@ fun MainScreen(
                     }
                 }
             }
+        }
+    }
+}
 
             // Quick Gallery Selection Footbar & File Input Studio
             Surface(
