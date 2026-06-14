@@ -59,7 +59,7 @@ jobs:
         continue-on-error: true
         with:
           cache-read-only: false
-          validate-wrappers: false
+          validate-wrappers: true
 
       # 3.5. Retry Gradle setup if the previous step failed
       - name: Retry Gradle Setup
