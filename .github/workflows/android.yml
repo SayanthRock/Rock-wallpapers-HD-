@@ -123,7 +123,6 @@ jobs:
 
       # 9. Build Release APK & Bundle
       - name: Build Release APK & Bundle
-        if: env.SIGNING_KEYSTORE != ''
         working-directory: ${{ env.PROJECT_DIR }}
         run: |
           ./gradlew assembleRelease bundleRelease --no-daemon
@@ -136,19 +135,16 @@ jobs:
 
       # 9.5 Upload Release Artifacts
       - name: Upload Release Artifacts
-        if: env.SIGNING_KEYSTORE != ''
         uses: actions/upload-artifact@v4
         with:
           name: app-release
           path: |
             ${{ env.PROJECT_DIR }}/app/build/outputs/apk/release/*.apk
             ${{ env.PROJECT_DIR }}/app/build/outputs/bundle/release/*.aab
-        env:
-          SIGNING_KEYSTORE: ${{ secrets.SIGNING_KEYSTORE }}
 
       # 10. Create GitHub Release
       - name: Create GitHub Release
-        if: startsWith(github.ref, 'refs/tags/v') && env.SIGNING_KEYSTORE != ''
+        if: startsWith(github.ref, 'refs/tags/v')
         uses: softprops/action-gh-release@v2
         with:
           files: |
@@ -157,5 +153,4 @@ jobs:
           generate_release_notes: true
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-          SIGNING_KEYSTORE: ${{ secrets.SIGNING_KEYSTORE }}
 
