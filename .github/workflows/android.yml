@@ -31,6 +31,10 @@ jobs:
             chmod +x gradlew || echo "gradlew not found in root"
           else
             DIR=$(dirname "$SETTINGS_PATH")
+            DIR="${DIR#./}"
+            if [ -z "$DIR" ] || [ "$DIR" = "." ]; then
+              DIR="."
+            fi
             echo "PROJECT_DIR=$DIR" >> $GITHUB_ENV
             chmod +x "$DIR/gradlew" || echo "gradlew not found in $DIR"
           fi
@@ -64,6 +68,7 @@ jobs:
 
       # 3. Setup Gradle with caching and wrapper validation (with continue-on-error to survive transient failures)
       - name: Setup Gradle
+        id: setup_gradle
         uses: gradle/actions/setup-gradle@v3
         continue-on-error: true
         with:
@@ -73,7 +78,7 @@ jobs:
 
       # 3.5. Retry Gradle setup if the previous step failed
       - name: Retry Gradle Setup
-        if: failure()
+        if: steps.setup_gradle.outcome == 'failure'
         working-directory: ${{ env.PROJECT_DIR }}
         run: |
           echo "Previous setup step failed; attempting raw gradlew tasks call with network retries..."
