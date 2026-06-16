@@ -93,9 +93,27 @@ enum class PreviewDeviceStyle {
 }
 
 class MainActivity : ComponentActivity() {
+
+    private val requestPermissionLauncher = registerForActivityResult(
+        ActivityResultContracts.RequestMultiplePermissions()
+    ) { permissions ->
+        val storageGranted = permissions[android.Manifest.permission.READ_EXTERNAL_STORAGE] ?: false
+        val wallpaperGranted = permissions[android.Manifest.permission.SET_WALLPAPER] ?: false
+        val mediaImagesGranted = if (android.os.Build.VERSION.SDK_INT >= android.os.Build.VERSION_CODES.TIRAMISU) {
+            permissions[android.Manifest.permission.READ_MEDIA_IMAGES] ?: false
+        } else {
+            false
+        }
+        android.util.Log.d("MainActivity", "Permissions updated: storage=$storageGranted (mediaImages=$mediaImagesGranted), wallpaper=$wallpaperGranted")
+    }
+
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
         enableEdgeToEdge()
+
+        // Trigger permissions request on start
+        checkAndRequestPermissions()
+
         setContent {
             // Theme Preset State
             var currentThemeName by rememberSaveable { mutableStateOf("SLATE") }
@@ -109,6 +127,24 @@ class MainActivity : ComponentActivity() {
                     onPresetChange = { newPreset -> currentThemeName = newPreset }
                 )
             }
+        }
+    }
+
+    private fun checkAndRequestPermissions() {
+        val permissions = mutableListOf(
+            android.Manifest.permission.SET_WALLPAPER,
+            android.Manifest.permission.READ_EXTERNAL_STORAGE
+        )
+        if (android.os.Build.VERSION.SDK_INT >= android.os.Build.VERSION_CODES.TIRAMISU) {
+            permissions.add(android.Manifest.permission.READ_MEDIA_IMAGES)
+        }
+
+        val neededPermissions = permissions.filter {
+            androidx.core.content.ContextCompat.checkSelfPermission(this, it) != android.content.pm.PackageManager.PERMISSION_GRANTED
+        }
+
+        if (neededPermissions.isNotEmpty()) {
+            requestPermissionLauncher.launch(neededPermissions.toTypedArray())
         }
     }
 }
@@ -4735,15 +4771,14 @@ private suspend fun performSetWallpaper(
             canvas.restore()
         }
 
-        if (android.os.Build.VERSION.SDK_INT >= android.os.Build.VERSION_CODES.N) {
-            try {
-                wallpaperManager.setBitmap(resultBitmap, null, true, wallpaperType)
-            } catch (e: Exception) {
-                // Fallback in case of specific permission error on certain devices with setBitmap (which) API
-                wallpaperManager.setBitmap(resultBitmap)
-            }
-        } else {
-            wallpaperManager.setBitmap(resultBitmap)
+        val destination = when (wallpaperType) {
+            WallpaperManager.FLAG_LOCK -> WallpaperHelper.Destination.LOCK
+            WallpaperManager.FLAG_SYSTEM -> WallpaperHelper.Destination.HOME
+            else -> WallpaperHelper.Destination.BOTH
+        }
+        val isApplied = WallpaperHelper.setWallpaper(context, resultBitmap, destination)
+        if (!isApplied) {
+            android.util.Log.e("MainActivity", "Failed applying wallpaper via WallpaperHelper utility class.")
         }
 
         // Memory Recycling cleanup
