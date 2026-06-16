@@ -294,6 +294,21 @@ fun MainScreen(
         }
     }
 
+    var appBackgroundUrl by remember {
+        mutableStateOf(sharedPreferences.getString("app_bg_url", null))
+    }
+
+    val setAppBackground = remember {
+        { url: String? ->
+            appBackgroundUrl = url
+            if (url != null) {
+                sharedPreferences.edit().putString("app_bg_url", url).apply()
+            } else {
+                sharedPreferences.edit().remove("app_bg_url").apply()
+            }
+        }
+    }
+
     // States
     var selectedPhoto by remember { mutableStateOf<Any?>(null) }
     var showPreview by remember { mutableStateOf(false) }
@@ -613,8 +628,31 @@ fun MainScreen(
 
     var isOnlineQuerySimulating by remember { mutableStateOf(false) }
 
-    Scaffold(
-        containerColor = MaterialTheme.colorScheme.background,
+    Box(modifier = Modifier.fillMaxSize()) {
+        if (appBackgroundUrl != null) {
+            AsyncImage(
+                model = ImageRequest.Builder(LocalContext.current)
+                    .data(appBackgroundUrl)
+                    .crossfade(true)
+                    .build(),
+                contentDescription = null,
+                modifier = Modifier
+                    .fillMaxSize()
+                    .blur(20.dp),
+                contentScale = ContentScale.Crop
+            )
+            Box(
+                modifier = Modifier
+                    .fillMaxSize()
+                    .background(
+                        if (isDarkMode) Color.Black.copy(alpha = 0.65f)
+                        else Color.White.copy(alpha = 0.75f)
+                    )
+            )
+        }
+
+        Scaffold(
+            containerColor = if (appBackgroundUrl != null) Color.Transparent else MaterialTheme.colorScheme.background,
         topBar = {
             Row(
                 modifier = Modifier
@@ -1648,6 +1686,7 @@ fun MainScreen(
             }
         }
     }
+    } // End of custom background Box
 
     // Modal Preferences / Selection Custom Palette Theme Overlay
     if (showSettings) {
@@ -1726,6 +1765,35 @@ fun MainScreen(
                         }
                     }
                     
+                    if (appBackgroundUrl != null) {
+                        HorizontalDivider(color = MaterialTheme.colorScheme.outlineVariant, modifier = Modifier.padding(vertical = 12.dp))
+                        Row(
+                            modifier = Modifier
+                                .fillMaxWidth()
+                                .padding(vertical = 4.dp),
+                            horizontalArrangement = Arrangement.SpaceBetween,
+                            verticalAlignment = Alignment.CenterVertically
+                        ) {
+                            Column(modifier = Modifier.weight(1f)) {
+                                Text("App Screen Background", fontWeight = FontWeight.Bold)
+                                Text("A beautiful custom background is active", fontSize = 11.sp, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                            }
+                            Button(
+                                onClick = {
+                                    setAppBackground(null)
+                                },
+                                colors = ButtonDefaults.buttonColors(
+                                    containerColor = MaterialTheme.colorScheme.errorContainer,
+                                    contentColor = MaterialTheme.colorScheme.onErrorContainer
+                                ),
+                                shape = RoundedCornerShape(10.dp),
+                                contentPadding = PaddingValues(horizontal = 12.dp)
+                            ) {
+                                Text("RESET", fontSize = 10.sp, fontWeight = FontWeight.Bold)
+                            }
+                        }
+                    }
+
                     HorizontalDivider(color = MaterialTheme.colorScheme.outlineVariant, modifier = Modifier.padding(vertical = 12.dp))
                     
                     Text("WORKSPACE DISPLAY SCALE:", fontWeight = FontWeight.Black, style = MaterialTheme.typography.bodyMedium)
@@ -1795,20 +1863,26 @@ fun MainScreen(
             photo = selectedPhoto!!,
             onDismiss = { showPreview = false },
             onSetWallpaper = { scale, offset, settings, type ->
-                scope.launch {
-                    val success = performSetWallpaper(
-                        context = context,
-                        photo = selectedPhoto!!,
-                        scale = scale,
-                        offset = offset,
-                        settings = settings,
-                        wallpaperType = type
-                    )
-                    if (success) {
-                        Toast.makeText(context, "Successfully customized and applied!", Toast.LENGTH_SHORT).show()
-                        showPreview = false
-                    } else {
-                        Toast.makeText(context, "Failed to apply wallpaper.", Toast.LENGTH_SHORT).show()
+                if (type == -1) {
+                    setAppBackground(selectedPhoto.toString())
+                    Toast.makeText(context, "App screen background customized!", Toast.LENGTH_SHORT).show()
+                    showPreview = false
+                } else {
+                    scope.launch {
+                        val success = performSetWallpaper(
+                            context = context,
+                            photo = selectedPhoto!!,
+                            scale = scale,
+                            offset = offset,
+                            settings = settings,
+                            wallpaperType = type
+                        )
+                        if (success) {
+                            Toast.makeText(context, "Successfully customized and applied!", Toast.LENGTH_SHORT).show()
+                            showPreview = false
+                        } else {
+                            Toast.makeText(context, "Failed to apply wallpaper.", Toast.LENGTH_SHORT).show()
+                        }
                     }
                 }
             }
@@ -4051,7 +4125,8 @@ fun WallpaperPreviewDialog(
                                         val promptOptions = listOf(
                                             Triple("Home Screen Only", Icons.Default.Home, WallpaperManager.FLAG_SYSTEM),
                                             Triple("Lock Screen Only", Icons.Default.Lock, WallpaperManager.FLAG_LOCK),
-                                            Triple("Both Home & Lock", Icons.Default.Layers, WallpaperManager.FLAG_SYSTEM or WallpaperManager.FLAG_LOCK)
+                                            Triple("Both Home & Lock", Icons.Default.Layers, WallpaperManager.FLAG_SYSTEM or WallpaperManager.FLAG_LOCK),
+                                            Triple("Set as App Background 📱", Icons.Default.Palette, -1)
                                         )
                                         
                                         promptOptions.forEach { (label, icon, typeFlag) ->
