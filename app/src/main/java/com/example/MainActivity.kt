@@ -1898,10 +1898,11 @@ fun MainScreen(
         WallpaperPreviewDialog(
             photo = selectedPhoto!!,
             onDismiss = { showPreview = false },
-            onSetWallpaper = { scale, offset, settings, type ->
+            onSetWallpaper = { scale, offset, settings, type, onResult ->
                 if (type == -1) {
                     setAppBackground(selectedPhoto.toString())
                     Toast.makeText(context, "App screen background customized!", Toast.LENGTH_SHORT).show()
+                    onResult(true)
                     showPreview = false
                 } else {
                     scope.launch {
@@ -1913,6 +1914,7 @@ fun MainScreen(
                             settings = settings,
                             wallpaperType = type
                         )
+                        onResult(success)
                         if (success) {
                             Toast.makeText(context, "Successfully customized and applied!", Toast.LENGTH_SHORT).show()
                             showPreview = false
@@ -1932,7 +1934,7 @@ fun MainScreen(
 fun WallpaperPreviewDialog(
     photo: Any,
     onDismiss: () -> Unit,
-    onSetWallpaper: (Float, androidx.compose.ui.geometry.Offset, EditorSettings, Int) -> Unit
+    onSetWallpaper: (Float, androidx.compose.ui.geometry.Offset, EditorSettings, Int, (Boolean) -> Unit) -> Unit
 ) {
     // States
     var isSaving by remember { mutableStateOf(false) }
@@ -4170,7 +4172,9 @@ fun WallpaperPreviewDialog(
                                                 onClick = {
                                                     isSaving = true
                                                     showApplyPrompt = false
-                                                    onSetWallpaper(scale, offset, editorSettings, typeFlag)
+                                                    onSetWallpaper(scale, offset, editorSettings, typeFlag) { result ->
+                                                        isSaving = false
+                                                    }
                                                 },
                                                 shape = RoundedCornerShape(14.dp),
                                                 colors = ButtonDefaults.buttonColors(
@@ -4202,6 +4206,41 @@ fun WallpaperPreviewDialog(
                                 }
                             }
                         }
+                    }
+                }
+            }
+
+            if (isSaving) {
+                Box(
+                    modifier = Modifier
+                        .fillMaxSize()
+                        .background(Color.Black.copy(alpha = 0.75f))
+                        .clickable(enabled = false) {},
+                    contentAlignment = Alignment.Center
+                ) {
+                    Column(
+                        horizontalAlignment = Alignment.CenterHorizontally,
+                        verticalArrangement = Arrangement.Center
+                    ) {
+                        CircularProgressIndicator(
+                            color = MaterialTheme.colorScheme.primary,
+                            modifier = Modifier.size(54.dp),
+                            strokeWidth = 4.dp
+                        )
+                        Spacer(modifier = Modifier.height(16.dp))
+                        Text(
+                            text = "COMMITTING CUSTOM WALLPAPER...",
+                            color = Color.White,
+                            fontSize = 12.sp,
+                            fontWeight = FontWeight.Black,
+                            letterSpacing = 1.sp
+                        )
+                        Spacer(modifier = Modifier.height(8.dp))
+                        Text(
+                            text = "Calculating depth mapping & rendering color assets",
+                            color = Color.White.copy(alpha = 0.6f),
+                            fontSize = 10.sp
+                        )
                     }
                 }
             }
