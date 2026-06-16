@@ -1,0 +1,6 @@
+# Auto-detect text files and perform line ending normalization
+* text=auto
+
+# Explicitly mark binary files to prevent Git from modifying their content or line endings
+*.jar binary
+*.jks binary
