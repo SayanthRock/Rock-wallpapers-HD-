@@ -25,6 +25,10 @@ jobs:
       - name: Make Gradle executable
         run: chmod +x ./gradlew
 
+      # 🔍 Validate Gradle Wrapper
+      - name: Validate Gradle Wrapper
+        run: ./gradlew --version
+
       # 🔐 Decode Keystore safely
       - name: Decode Keystore
         run: |
@@ -32,7 +36,7 @@ jobs:
 
       # 📦 Build Release APK
       - name: Build Release APK
-        run: ./gradlew clean assembleRelease
+        run: ./gradlew clean assembleRelease --stacktrace
 
       # 📍 Locate APK
       - name: Find APK
