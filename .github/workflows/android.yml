@@ -17,6 +17,8 @@ jobs:
     env:
       GRADLE_OPTS: "-Djava.net.preferIPv4Stack=true"
       SIGNING_KEYSTORE: ${{ secrets.SIGNING_KEYSTORE || secrets.SIGNING_KEYSTORE_BASE64 }}
+      VERSION_CODE: ${{ github.run_number }}
+      VERSION_NAME: 1.0.${{ github.run_number }}-${{ github.sha }}
 
     steps:
       # 1. Checkout code
