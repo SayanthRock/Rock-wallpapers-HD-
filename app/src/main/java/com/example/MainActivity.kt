@@ -1495,6 +1495,31 @@ fun MainScreen(
                                             modifier = Modifier.size(18.dp)
                                         )
                                     }
+
+                                    // Share Wallpaper Button Overlay
+                                    IconButton(
+                                        onClick = {
+                                            val sendIntent = android.content.Intent().apply {
+                                                action = android.content.Intent.ACTION_SEND
+                                                type = "text/plain"
+                                                val shareMessage = "Check out this beautiful wallpaper \"${item.title}\" from Paper Rock: ${item.url}"
+                                                putExtra(android.content.Intent.EXTRA_TEXT, shareMessage)
+                                            }
+                                            val shareIntent = android.content.Intent.createChooser(sendIntent, "Share Wallpaper")
+                                            context.startActivity(shareIntent)
+                                        },
+                                        modifier = Modifier
+                                            .size(36.dp)
+                                            .background(Color.Black.copy(alpha = 0.45f), CircleShape)
+                                            .testTag("share_button_${item.title.replace("[^a-zA-Z0-9]".toRegex(), "_").lowercase()}")
+                                    ) {
+                                        Icon(
+                                            imageVector = Icons.Default.Share,
+                                            contentDescription = "Share ${item.title}",
+                                            tint = Color.White,
+                                            modifier = Modifier.size(18.dp)
+                                        )
+                                    }
                                 }
 
                                 // Caption Overlay (Only show if Toggle is Enabled)
@@ -2304,6 +2329,33 @@ fun WallpaperPreviewDialog(
                                         contentDescription = "Immersive Full Screen Preview",
                                         tint = Color.White,
                                         modifier = Modifier.size(20.dp)
+                                    )
+                                }
+
+                                IconButton(
+                                    onClick = {
+                                        val sendIntent = android.content.Intent().apply {
+                                            action = android.content.Intent.ACTION_SEND
+                                            type = "text/plain"
+                                            val shareMessage = when (photo) {
+                                                is String -> "Check out this beautiful wallpaper: $photo"
+                                                else -> "Check out this custom wallpaper generated with Paper Rock Wallpapers!"
+                                            }
+                                            putExtra(android.content.Intent.EXTRA_TEXT, shareMessage)
+                                        }
+                                        val shareIntent = android.content.Intent.createChooser(sendIntent, "Share Wallpaper")
+                                        context.startActivity(shareIntent)
+                                    },
+                                    modifier = Modifier
+                                        .size(34.dp)
+                                        .background(Color.White.copy(alpha = 0.12f), CircleShape)
+                                        .testTag("share_preview_button")
+                                ) {
+                                    Icon(
+                                        imageVector = Icons.Default.Share,
+                                        contentDescription = "Share Wallpaper",
+                                        tint = Color.White,
+                                        modifier = Modifier.size(18.dp)
                                     )
                                 }
 
@@ -5539,7 +5591,6 @@ fun AiRockStudioLayout(
         "Classic Rock Photo",
         "Pop Punk Album Art"
     )
-    var selectedArtStyle by rememberSaveable { mutableStateOf("Heavy Metal Abstract") }
     
     val triggerGeneration = { keywords: String ->
         onGeneratingChange(true)
@@ -5554,7 +5605,18 @@ fun AiRockStudioLayout(
                     return@launch
                 }
                 
-                val promptText = "A professional ultra-high definition visual theme smartphone wallpaper for Rock & Roll in $selectedArtStyle art style. Keywords and elements describing composition: ${keywords.trim()}. Rich textures, dramatic stage lighting, neon colors, perfect music poster aesthetic, complete smartphone screen composition, no text, no captions."
+                val stylePromptSuffix = when (aiArtStyle) {
+                    "Heavy Metal Abstract" -> ", designed in a Heavy Metal Abstract style, featuring raw chaotic paint brush strokes, sharp geometric elements, highly textured grunge overlays, extreme contrast dark background, and an aggressive rock album visual aesthetic"
+                    "Vintage Rock Concert Poster" -> ", stylized as a Vintage Rock Concert Poster, with retro 1970s hand-drawn print aesthetics, distressed retro ink patterns, a warm nostalgic halftone texture, off-cut color registration, and iconic rock gig poster vibes"
+                    "Dark Grunge" -> ", styled in a Dark Grunge aesthetic, containing dusty distressed overlays, heavily desaturated vintage hues, severe vignettes, raw analog film noise, rustic wear-and-tear, and a muted, dark underground scene atmosphere"
+                    "Psychedelic Acid Rock" -> ", styled in a vibrant Psychedelic Acid Rock theme, with surreal melting shapes, trippy swirling smoke, liquid color spectrum waves, retro-futuristic fantasy elements, and hallucinatory dream-like visuals"
+                    "Neon Cyberpunk Rock" -> ", styled in a Neon Cyberpunk Rock aesthetic, glowing with intense synthesizer lighting, vibrant hot pink and cyan lasers, sleek dark metallic surfaces, futuristic holographic details, and high-energy electronic cyber-rock vibes"
+                    "Classic Rock Photo" -> ", crafted as a Classic Rock Photo, representing professional stage photography, hyper-detailed high-contrast concert lighting, authentic camera grain, close-up lens focus, and raw rock band live performance realism"
+                    "Pop Punk Album Art" -> ", styled as loud Pop Punk Album Art, combining vibrant saturated pop-culture colors, hand-drawn skateboard sketches, energetic collages, youthful and rebellious attitude, thick ink vector borders, and clean high-contrast elements"
+                    else -> ""
+                }
+
+                val promptText = "A professional ultra-high definition visual theme smartphone wallpaper for Rock & Roll. Keywords and elements describing composition: ${keywords.trim()}$stylePromptSuffix. Rich textures, dramatic stage lighting, neon colors, perfect music poster aesthetic, complete smartphone screen composition, no text, no captions."
 
                 val request = GenerateContentRequest(
                     contents = listOf(
@@ -5758,7 +5820,7 @@ fun AiRockStudioLayout(
                             
                             SuggestionChip(
                                 onClick = { expanded = !expanded },
-                                label = { Text(selectedArtStyle, fontSize = 11.sp, fontWeight = FontWeight.Bold) },
+                                label = { Text(aiArtStyle, fontSize = 11.sp, fontWeight = FontWeight.Bold) },
                                 icon = {
                                     Icon(
                                         imageVector = Icons.Default.ArrowDropDown,
@@ -5789,12 +5851,12 @@ fun AiRockStudioLayout(
                                             Text(
                                                 text = style, 
                                                 fontSize = 12.sp, 
-                                                fontWeight = if (selectedArtStyle == style) FontWeight.Bold else FontWeight.Normal,
-                                                color = if (selectedArtStyle == style) MaterialTheme.colorScheme.primary else Color.White
+                                                fontWeight = if (aiArtStyle == style) FontWeight.Bold else FontWeight.Normal,
+                                                color = if (aiArtStyle == style) MaterialTheme.colorScheme.primary else Color.White
                                             ) 
                                         },
                                         onClick = {
-                                            selectedArtStyle = style
+                                            onArtStyleChange(style)
                                             expanded = false
                                         },
                                         modifier = Modifier.testTag("art_style_option_${style.replace("[^a-zA-Z0-9]".toRegex(), "_").lowercase()}")
@@ -5904,112 +5966,6 @@ fun AiRockStudioLayout(
                                     ),
                                     shape = RoundedCornerShape(8.dp)
                                 )
-                            }
-                        }
-                    }
-
-                    HorizontalDivider(color = MaterialTheme.colorScheme.outline.copy(alpha = 0.1f))
-
-                    var isStyleDropdownExpanded by remember { mutableStateOf(false) }
-                    
-                    Column(modifier = Modifier.fillMaxWidth()) {
-                        Row(
-                            modifier = Modifier.fillMaxWidth(),
-                            horizontalArrangement = Arrangement.SpaceBetween,
-                            verticalAlignment = Alignment.CenterVertically
-                        ) {
-                            Column(modifier = Modifier.weight(1f)) {
-                                Text(
-                                    text = "Art Style", 
-                                    style = MaterialTheme.typography.bodyMedium, 
-                                    fontWeight = FontWeight.SemiBold
-                                )
-                                Text(
-                                    text = "Select dynamic aesthetic overlay",
-                                    style = MaterialTheme.typography.bodySmall, 
-                                    color = MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.7f),
-                                    fontSize = 11.sp
-                                )
-                            }
-                            
-                            Box {
-                                Button(
-                                    onClick = { isStyleDropdownExpanded = true },
-                                    shape = RoundedCornerShape(12.dp),
-                                    colors = ButtonDefaults.buttonColors(
-                                        containerColor = MaterialTheme.colorScheme.primaryContainer.copy(alpha = 0.4f),
-                                        contentColor = MaterialTheme.colorScheme.primary
-                                    ),
-                                    border = BorderStroke(1.dp, MaterialTheme.colorScheme.primary.copy(alpha = 0.3f)),
-                                    contentPadding = PaddingValues(horizontal = 14.dp, vertical = 8.dp),
-                                    modifier = Modifier.testTag("art_style_dropdown_trigger")
-                                ) {
-                                    Icon(
-                                        imageVector = Icons.Default.Palette,
-                                        contentDescription = null,
-                                        modifier = Modifier.size(16.dp)
-                                    )
-                                    Spacer(modifier = Modifier.width(8.dp))
-                                    Text(
-                                        text = aiArtStyle, 
-                                        fontWeight = FontWeight.Bold, 
-                                        fontSize = 12.sp
-                                    )
-                                    Spacer(modifier = Modifier.width(4.dp))
-                                    Icon(
-                                        imageVector = if (isStyleDropdownExpanded) Icons.Default.ArrowDropUp else Icons.Default.ArrowDropDown,
-                                        contentDescription = null,
-                                        modifier = Modifier.size(18.dp)
-                                    )
-                                }
-
-                                DropdownMenu(
-                                    expanded = isStyleDropdownExpanded,
-                                    onDismissRequest = { isStyleDropdownExpanded = false },
-                                    modifier = Modifier
-                                        .background(Color(0xFF16161C))
-                                        .border(BorderStroke(1.dp, Color.White.copy(alpha = 0.12f)), RoundedCornerShape(12.dp))
-                                        .testTag("art_style_dropdown_menu"),
-                                    scrollState = rememberScrollState()
-                                ) {
-                                    val stylesList = listOf(
-                                        "Heavy Metal Abstract",
-                                        "Vintage Rock Concert Poster",
-                                        "Dark Grunge",
-                                        "Cyberpunk Neon",
-                                        "Psychedelic Dream",
-                                        "Minimalist Vector"
-                                    )
-                                    stylesList.forEach { style ->
-                                        DropdownMenuItem(
-                                            text = {
-                                                Row(verticalAlignment = Alignment.CenterVertically) {
-                                                    val isSelected = aiArtStyle == style
-                                                    RadioButton(
-                                                        selected = isSelected,
-                                                        onClick = null,
-                                                        colors = RadioButtonDefaults.colors(
-                                                            selectedColor = MaterialTheme.colorScheme.primary
-                                                        ),
-                                                        modifier = Modifier.size(24.dp)
-                                                    )
-                                                    Spacer(modifier = Modifier.width(12.dp))
-                                                    Text(
-                                                        text = style,
-                                                        color = if (isSelected) MaterialTheme.colorScheme.primary else Color.White,
-                                                        fontWeight = if (isSelected) FontWeight.Bold else FontWeight.Normal,
-                                                        fontSize = 13.sp
-                                                    )
-                                                }
-                                            },
-                                            onClick = {
-                                                onArtStyleChange(style)
-                                                isStyleDropdownExpanded = false
-                                            },
-                                            modifier = Modifier.testTag("art_style_item_${style.replace("[^a-zA-Z0-9]".toRegex(), "_").lowercase()}")
-                                        )
-                                    }
-                                }
                             }
                         }
                     }
