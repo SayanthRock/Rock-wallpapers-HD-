@@ -1,0 +1,92 @@
+name: Android Multi-Track CI
+
+on:
+  push:
+    branches: [ "main" ]
+
+  workflow_dispatch:
+    inputs:
+      track:
+        description: "Build track"
+        required: true
+        default: "beta"
+        type: choice
+        options:
+          - dev
+          - beta
+          - stable
+
+  release:
+    types: [published]
+
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Set up JDK 17
+        uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: 17
+
+      - name: Setup Gradle cache
+        uses: gradle/actions/setup-gradle@v3
+
+      - name: Make gradlew executable
+        run: chmod +x gradlew
+
+      # -------------------------
+      # Decide build type
+      # -------------------------
+      - name: Set build track
+        id: track
+        run: |
+          if [ "${{ github.event_name }}" = "push" ]; then
+            echo "track=dev" >> ${GITHUB_OUTPUT}
+          elif [ "${{ github.event_name }}" = "release" ]; then
+            echo "track=stable" >> ${GITHUB_OUTPUT}
+          else
+            echo "track=${{ github.event.inputs.track }}" >> ${GITHUB_OUTPUT}
+          fi
+
+      # -------------------------
+      # Build APK
+      # -------------------------
+      - name: Build APK
+        run: ./gradlew assembleDebug
+
+      # -------------------------
+      # Versioning system
+      # -------------------------
+      - name: Generate version info
+        id: version
+        run: |
+          SHORT_SHA=$(git rev-parse --short HEAD)
+          BUILD_NUM=${{ github.run_number }}
+          TRACK=${{ steps.track.outputs.track }}
+
+          echo "sha=${SHORT_SHA}" >> ${GITHUB_OUTPUT}
+          echo "build=${BUILD_NUM}" >> ${GITHUB_OUTPUT}
+          echo "track=${TRACK}" >> ${GITHUB_OUTPUT}
+
+      # -------------------------
+      # Rename APK
+      # -------------------------
+      - name: Rename APK
+        run: |
+          APK_PATH=$(find app/build/outputs/apk/debug -name "*.apk" | head -n 1)
+          cp "$APK_PATH" "app-${{ steps.version.outputs.track }}-${{ steps.version.outputs.build }}-${{ steps.version.outputs.sha }}.apk"
+
+      # -------------------------
+      # Upload artifact
+      # -------------------------
+      - name: Upload APK
+        uses: actions/upload-artifact@v4
+        with:
+          name: apk-${{ steps.version.outputs.track }}-${{ steps.version.outputs.build }}
+          path: app-*.apk
