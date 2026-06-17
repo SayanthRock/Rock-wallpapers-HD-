@@ -385,7 +385,7 @@ fun MainScreen(
     var aiArtStyle by rememberSaveable { mutableStateOf("Heavy Metal Abstract") }
     var isRefreshing by remember { mutableStateOf(false) }
 
-    val categories = listOf("Liquid Glass", "Subjects", "Backgrounds", "Nature", "Textures", "Saved", "Custom", "Resolution Centre", "AI Studio")
+    val categories = listOf("Liquid Glass", "Subjects", "Backgrounds", "Nature", "Textures", "Favorites", "Custom", "Resolution Centre", "AI Studio")
 
     // Image Picker
     val pickerLauncher = rememberLauncherForActivityResult(
@@ -642,7 +642,7 @@ fun MainScreen(
                 } else {
                     val item = baseWallpapers.find { it.url == url }
                     val title = item?.title ?: "Saved Custom Rock"
-                    val category = item?.category ?: "Saved"
+                    val category = item?.category ?: "Favorites"
                     favoritesRepository.addFavorite(
                         com.example.data.FavoriteWallpaper(
                             url = url,
@@ -659,7 +659,7 @@ fun MainScreen(
     // Filtered result logic based on Active Search Query vs. Selected Category Tab and Tag Filter
     val filteredWallpapers = remember(searchQuery, selectedCategory, baseWallpapers.size, savedUrls.size, selectedTagFilter, favoriteEntities) {
         val initialList = if (searchQuery.trim().isEmpty()) {
-            if (selectedCategory == "Saved") {
+            if (selectedCategory == "Favorites") {
                 favoriteEntities.map { fav ->
                     baseWallpapers.find { it.url == fav.url } ?: WallpaperItem(
                         url = fav.url,
@@ -1224,7 +1224,7 @@ fun MainScreen(
                                 horizontalAlignment = Alignment.CenterHorizontally,
                                 verticalArrangement = Arrangement.Center
                             ) {
-                    if (selectedCategory == "Saved" && searchQuery.trim().isEmpty()) {
+                    if (selectedCategory == "Favorites" && searchQuery.trim().isEmpty()) {
                         Surface(
                             modifier = Modifier.size(80.dp),
                             shape = CircleShape,
@@ -1233,7 +1233,7 @@ fun MainScreen(
                             Box(contentAlignment = Alignment.Center) {
                                 Icon(
                                     Icons.Default.FavoriteBorder,
-                                    contentDescription = "No Saved Wallpapers",
+                                    contentDescription = "No Favorite Wallpapers",
                                     modifier = Modifier.size(36.dp),
                                     tint = MaterialTheme.colorScheme.onSurfaceVariant
                                 )
@@ -1241,12 +1241,12 @@ fun MainScreen(
                         }
                         Spacer(Modifier.height(16.dp))
                         Text(
-                            "No Saved Wallpapers",
+                            "No Favorite Wallpapers",
                             fontWeight = FontWeight.Bold,
                             style = MaterialTheme.typography.titleLarge
                         )
                         Text(
-                            "Your saved collection is empty. Tap the heart icon on any wallpaper item to save it here for offline viewing and editing!",
+                            "Your favorites collection is empty. Tap the heart-shaped icon button on any wallpaper card to save it here for offline viewing and personalized layouts!",
                             textAlign = TextAlign.Center,
                             color = MaterialTheme.colorScheme.onSurfaceVariant,
                             fontSize = 13.sp,
