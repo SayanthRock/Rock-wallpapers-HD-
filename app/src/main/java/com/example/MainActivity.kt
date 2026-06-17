@@ -349,6 +349,9 @@ fun MainScreen(
     var selectedPhoto by remember { mutableStateOf<Any?>(null) }
     var showPreview by remember { mutableStateOf(false) }
     var showSettings by remember { mutableStateOf(false) }
+    var quickApplyPhoto by remember { mutableStateOf<Any?>(null) }
+    var showQuickApplyPrompt by remember { mutableStateOf(false) }
+    var isQuickSettingWallpaper by remember { mutableStateOf(false) }
     var searchQuery by remember { mutableStateOf("") }
     var selectedCategory by remember { mutableStateOf("Liquid Glass") }
     var selectedTagFilter by remember { mutableStateOf<String?>(null) }
@@ -1081,7 +1084,8 @@ fun MainScreen(
                         baseWallpapers = baseWallpapers,
                         selectedPhotoSetter = { selectedPhoto = it },
                         showPreviewSetter = { showPreview = it },
-                        selectedCategorySetter = { selectedCategory = it }
+                        selectedCategorySetter = { selectedCategory = it },
+                        onQuickApplySetter = { quickApplyPhoto = it; showQuickApplyPrompt = true }
                     )
                 }
             } else {
@@ -1467,6 +1471,25 @@ fun MainScreen(
                                                 modifier = Modifier.size(18.dp)
                                             )
                                         }
+                                    }
+
+                                    // Quick Apply Wallpaper Icon Button
+                                    IconButton(
+                                        onClick = {
+                                            quickApplyPhoto = item.url
+                                            showQuickApplyPrompt = true
+                                        },
+                                        modifier = Modifier
+                                            .size(36.dp)
+                                            .background(Color.Black.copy(alpha = 0.45f), CircleShape)
+                                            .testTag("quick_apply_button_${item.title.replace("[^a-zA-Z0-9]".toRegex(), "_").lowercase()}")
+                                    ) {
+                                        Icon(
+                                            imageVector = Icons.Default.Wallpaper,
+                                            contentDescription = "Quick Set ${item.title}",
+                                            tint = Color.White,
+                                            modifier = Modifier.size(18.dp)
+                                        )
                                     }
                                 }
 
@@ -1925,6 +1948,135 @@ fun MainScreen(
                 }
             }
         )
+    }
+
+    // Direct Quick Set Wallpaper Dialog Prompt
+    if (showQuickApplyPrompt && quickApplyPhoto != null) {
+        Dialog(onDismissRequest = { showQuickApplyPrompt = false }) {
+            Card(
+                shape = RoundedCornerShape(24.dp),
+                colors = CardDefaults.cardColors(containerColor = Color(0xFF16161C)),
+                border = BorderStroke(1.dp, Color.White.copy(alpha = 0.12f)),
+                modifier = Modifier.fillMaxWidth().padding(16.dp)
+            ) {
+                Column(
+                    modifier = Modifier.padding(24.dp),
+                    horizontalAlignment = Alignment.CenterHorizontally,
+                    verticalArrangement = Arrangement.spacedBy(16.dp)
+                ) {
+                    Icon(
+                        imageVector = Icons.Default.Wallpaper,
+                        contentDescription = null,
+                        tint = MaterialTheme.colorScheme.primary,
+                        modifier = Modifier.size(40.dp)
+                    )
+                    Text(
+                        text = "Quick Apply Wallpaper",
+                        style = MaterialTheme.typography.titleLarge.copy(fontWeight = FontWeight.Bold, color = Color.White)
+                    )
+                    Text(
+                        text = "Set this beautiful rock art as your background wallpaper instantly.",
+                        style = MaterialTheme.typography.bodyMedium,
+                        color = Color.White.copy(alpha = 0.7f),
+                        textAlign = TextAlign.Center
+                    )
+                    
+                    Spacer(modifier = Modifier.height(8.dp))
+                    
+                    Column(
+                        verticalArrangement = Arrangement.spacedBy(10.dp),
+                        modifier = Modifier.fillMaxWidth()
+                    ) {
+                        val promptOptions = listOf(
+                            Triple("Home Screen Only", Icons.Default.Home, android.app.WallpaperManager.FLAG_SYSTEM),
+                            Triple("Lock Screen Only", Icons.Default.Lock, android.app.WallpaperManager.FLAG_LOCK),
+                            Triple("Both Home & Lock", Icons.Default.Layers, android.app.WallpaperManager.FLAG_SYSTEM or android.app.WallpaperManager.FLAG_LOCK)
+                        )
+                        
+                        promptOptions.forEach { (label, icon, typeFlag) ->
+                            Button(
+                                onClick = {
+                                    isQuickSettingWallpaper = true
+                                    showQuickApplyPrompt = false
+                                    scope.launch {
+                                        val success = performQuickSetWallpaper(context, quickApplyPhoto!!, typeFlag)
+                                        isQuickSettingWallpaper = false
+                                        if (success) {
+                                            Toast.makeText(context, "Wallpaper applied successfully!", Toast.LENGTH_SHORT).show()
+                                        } else {
+                                            Toast.makeText(context, "Failed to set wallpaper direct.", Toast.LENGTH_SHORT).show()
+                                        }
+                                    }
+                                },
+                                shape = RoundedCornerShape(14.dp),
+                                colors = ButtonDefaults.buttonColors(
+                                    containerColor = Color.White.copy(alpha = 0.08f),
+                                    contentColor = Color.White
+                                ),
+                                border = BorderStroke(1.dp, Color.White.copy(alpha = 0.15f)),
+                                modifier = Modifier.fillMaxWidth().height(48.dp)
+                            ) {
+                                Row(
+                                    modifier = Modifier.fillMaxWidth(),
+                                    verticalAlignment = Alignment.CenterVertically,
+                                    horizontalArrangement = Arrangement.Start
+                                ) {
+                                    Icon(icon, contentDescription = null, tint = MaterialTheme.colorScheme.primary, modifier = Modifier.size(18.dp))
+                                    Spacer(modifier = Modifier.width(12.dp))
+                                    Text(label, fontWeight = FontWeight.Bold, fontSize = 14.sp)
+                                }
+                            }
+                        }
+                    }
+                    
+                    TextButton(
+                        onClick = { showQuickApplyPrompt = false },
+                        modifier = Modifier.align(Alignment.CenterHorizontally)
+                    ) {
+                        Text("CANCEL", fontWeight = FontWeight.Bold, color = MaterialTheme.colorScheme.primary)
+                    }
+                }
+            }
+        }
+    }
+
+    if (isQuickSettingWallpaper) {
+        Dialog(onDismissRequest = {}) {
+            Card(
+                shape = RoundedCornerShape(16.dp),
+                colors = CardDefaults.cardColors(containerColor = Color(0xFF101014)),
+                border = BorderStroke(1.dp, Color.White.copy(alpha = 0.12f)),
+                modifier = Modifier.width(280.dp).padding(16.dp)
+            ) {
+                Column(
+                    horizontalAlignment = Alignment.CenterHorizontally,
+                    verticalArrangement = Arrangement.Center,
+                    modifier = Modifier.fillMaxWidth().padding(24.dp)
+                ) {
+                    CircularProgressIndicator(
+                        color = MaterialTheme.colorScheme.primary,
+                        modifier = Modifier.size(48.dp),
+                        strokeWidth = 4.dp
+                    )
+                    Spacer(modifier = Modifier.height(16.dp))
+                    Text(
+                        text = "APPLYING WALLPAPER...",
+                        color = Color.White,
+                        fontSize = 11.sp,
+                        fontWeight = FontWeight.Black,
+                        letterSpacing = 1.sp,
+                        textAlign = TextAlign.Center
+                    )
+                    Spacer(modifier = Modifier.height(8.dp))
+                    Text(
+                        text = "Configuring system background natively",
+                        color = Color.White.copy(alpha = 0.5f),
+                        fontSize = 9.sp,
+                        textAlign = TextAlign.Center
+                    )
+                }
+            }
+        }
     }
 }
 
@@ -4573,6 +4725,78 @@ private suspend fun saveCustomizedImageToStorage(
     }
 }
 
+// Background Task applying direct original image on the actual Wallpaper without custom editor modifications
+private suspend fun performQuickSetWallpaper(
+    context: android.content.Context,
+    photo: Any,
+    wallpaperType: Int
+): Boolean = withContext(Dispatchers.IO) {
+    try {
+        val metrics = context.resources.displayMetrics
+        val screenWidth = metrics.widthPixels
+        val screenHeight = metrics.heightPixels
+
+        if (screenWidth <= 0 || screenHeight <= 0) return@withContext false
+
+        val imageLoader = ImageLoader(context)
+        val request = ImageRequest.Builder(context)
+            .data(photo)
+            .allowHardware(false)
+            .size(screenWidth, screenHeight)
+            .build()
+
+        val result = imageLoader.execute(request)
+        if (result !is SuccessResult) return@withContext false
+
+        val drawable = result.drawable
+        var isCreatedBitmap = false
+        val srcBitmap = if (drawable is android.graphics.drawable.BitmapDrawable) {
+            drawable.bitmap
+        } else {
+            isCreatedBitmap = true
+            val bitmap = android.graphics.Bitmap.createBitmap(
+                drawable.intrinsicWidth.coerceAtLeast(1),
+                drawable.intrinsicHeight.coerceAtLeast(1),
+                android.graphics.Bitmap.Config.ARGB_8888
+            )
+            val canvas = android.graphics.Canvas(bitmap)
+            drawable.setBounds(0, 0, canvas.width, canvas.height)
+            drawable.draw(canvas)
+            bitmap
+        }
+
+        // Scale and crop srcBitmap to screen dimensions directly
+        val resultBitmap = android.graphics.Bitmap.createBitmap(screenWidth, screenHeight, android.graphics.Bitmap.Config.ARGB_8888)
+        val canvas = android.graphics.Canvas(resultBitmap)
+        val paint = android.graphics.Paint(android.graphics.Paint.FILTER_BITMAP_FLAG)
+        val matrix = android.graphics.Matrix()
+
+        val scX = screenWidth.toFloat() / srcBitmap.width
+        val scY = screenHeight.toFloat() / srcBitmap.height
+        val baseScale = maxOf(scX, scY)
+
+        matrix.postScale(baseScale, baseScale)
+        matrix.postTranslate((screenWidth - srcBitmap.width * baseScale) / 2f, (screenHeight - srcBitmap.height * baseScale) / 2f)
+        canvas.drawBitmap(srcBitmap, matrix, paint)
+
+        val destination = when (wallpaperType) {
+            android.app.WallpaperManager.FLAG_LOCK -> WallpaperHelper.Destination.LOCK
+            android.app.WallpaperManager.FLAG_SYSTEM -> WallpaperHelper.Destination.HOME
+            else -> WallpaperHelper.Destination.BOTH
+        }
+        
+        val isApplied = WallpaperHelper.setWallpaper(context, resultBitmap, destination)
+        
+        if (isCreatedBitmap) srcBitmap.recycle()
+        resultBitmap.recycle()
+
+        isApplied
+    } catch (e: Exception) {
+        e.printStackTrace()
+        false
+    }
+}
+
 // Background Task applying exact modified matrix & layouts on the actual Wallpaper
 private suspend fun performSetWallpaper(
     context: android.content.Context,
@@ -5295,7 +5519,8 @@ fun AiRockStudioLayout(
     baseWallpapers: androidx.compose.runtime.snapshots.SnapshotStateList<WallpaperItem>,
     selectedPhotoSetter: (Any?) -> Unit,
     showPreviewSetter: (Boolean) -> Unit,
-    selectedCategorySetter: (String) -> Unit
+    selectedCategorySetter: (String) -> Unit,
+    onQuickApplySetter: (String) -> Unit
 ) {
     val presets = listOf("Guitar", "Concert Stage", "Classic Rock", "Drum Kit", "Neon Vinyl", "Heavy Metal", "Psychedelic")
     
@@ -5874,6 +6099,29 @@ fun AiRockStudioLayout(
                                 Spacer(Modifier.width(4.dp))
                                 Text("ADD GALLERY", fontSize = 11.sp, fontWeight = FontWeight.Bold)
                             }
+                        }
+
+                        Spacer(modifier = Modifier.height(6.dp))
+
+                        // Direct Quick Apply Button
+                        Button(
+                            onClick = {
+                                onQuickApplySetter(aiGeneratedImageUri)
+                            },
+                            shape = RoundedCornerShape(12.dp),
+                            modifier = Modifier
+                                .fillMaxWidth()
+                                .height(46.dp)
+                                .testTag("ai_quick_apply_button"),
+                            colors = ButtonDefaults.buttonColors(
+                                containerColor = MaterialTheme.colorScheme.primary.copy(alpha = 0.15f),
+                                contentColor = MaterialTheme.colorScheme.primary
+                            ),
+                            border = BorderStroke(1.dp, MaterialTheme.colorScheme.primary.copy(alpha = 0.3f))
+                        ) {
+                            Icon(Icons.Default.Wallpaper, contentDescription = null, modifier = Modifier.size(16.dp))
+                            Spacer(Modifier.width(8.dp))
+                            Text("DIRECT SET AS WALLPAPER", fontSize = 11.sp, fontWeight = FontWeight.Black)
                         }
                     }
                 }

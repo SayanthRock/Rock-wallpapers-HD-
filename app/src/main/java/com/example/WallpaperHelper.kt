@@ -71,6 +71,10 @@ object WallpaperHelper {
             Log.e(TAG, "Setting wallpaper is not supported on this device.")
             return@withContext false
         }
+        if (!isSetWallpaperAllowed(context)) {
+            Log.e(TAG, "Changing wallpaper is not allowed on this device (it may be restricted by Admin policy).")
+            return@withContext false
+        }
 
         try {
             val wm = WallpaperManager.getInstance(context)
@@ -110,6 +114,10 @@ object WallpaperHelper {
     ): Boolean = withContext(Dispatchers.IO) {
         if (!isWallpaperSupported(context)) {
             Log.e(TAG, "Setting wallpaper is not supported on this device.")
+            return@withContext false
+        }
+        if (!isSetWallpaperAllowed(context)) {
+            Log.e(TAG, "Changing wallpaper is not allowed on this device (it may be restricted by Admin policy).")
             return@withContext false
         }
 
