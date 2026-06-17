@@ -1,28 +1,9 @@
-name: Android CI (Dev / Beta / Signed Stable)
+name: Rock Wallpapers HD Build
 
 on:
-  push:
-    branches: [ "main" ]
-
   workflow_dispatch:
-    inputs:
-      track:
-        description: "Build track"
-        required: true
-        default: "beta"
-        type: choice
-        options:
-          - dev
-          - beta
-          - stable
-
-  release:
-    types: [published]
-
-env:
-  GRADLE_OPTS: "-Djava.net.preferIPv4Stack=true"
-  VERSION_CODE: ${{ github.run_number }}
-  VERSION_NAME: 1.0.${{ github.run_number }}-${{ github.sha }}
+  push:
+    branches: [ main ]
 
 jobs:
   build:
@@ -38,90 +19,64 @@ jobs:
           distribution: temurin
           java-version: 17
 
-      - name: Setup Gradle cache
-        uses: gradle/actions/setup-gradle@v3
+      - name: Setup Android SDK
+        uses: android-actions/setup-android@v3
 
-      - name: Make gradlew executable
-        run: chmod +x gradlew
+      - name: Make Gradle executable
+        run: chmod +x ./gradlew
 
-      # ----------------------------
-      # Decode Keystore (only for stable)
-      # ----------------------------
+      # 🔐 Decode Keystore safely
       - name: Decode Keystore
-        if: github.event_name == 'release' || github.event.inputs.track == 'stable'
         run: |
-          echo "${{ secrets.KEYSTORE_BASE64 }}" | base64 --decode > release.jks
+          echo "${{ secrets.KEYSTORE_BASE64 }}" | base64 --decode > release.keystore
 
-      # ----------------------------
-      # Decide track
-      # ----------------------------
-      - name: Set track
-        id: track
+      # 📦 Build Release APK
+      - name: Build Release APK
+        run: ./gradlew clean assembleRelease
+
+      # 📍 Locate APK
+      - name: Find APK
+        id: apk
         run: |
-          if [ "${{ github.event_name }}" = "push" ]; then
-            echo "track=dev" >> $GITHUB_OUTPUT
-          elif [ "${{ github.event_name }}" = "release" ]; then
-            echo "track=stable" >> $GITHUB_OUTPUT
-          else
-            echo "track=${{ github.event.inputs.track }}" >> $GITHUB_OUTPUT
+          APK_PATH=$(find app/build/outputs/apk/release -name "*.apk" | head -n 1)
+          if [ -z "$APK_PATH" ]; then
+            echo "Error: No APK found!"
+            exit 1
           fi
+          echo "apk_path=$APK_PATH" >> $GITHUB_OUTPUT
 
-      # ----------------------------
-      # Build APK (Debug or Release)
-      # ----------------------------
-      - name: Build APK
+      # ✍️ Sign APK (FIXED - correct way)
+      - name: Sign APK
         run: |
-          if [ "${{ steps.track.outputs.track }}" = "stable" ]; then
-            ./gradlew assembleRelease
-          else
-            ./gradlew assembleDebug
-          fi
+          jarsigner -verbose \
+            -sigalg SHA256withRSA \
+            -digestalg SHA-256 \
+            -keystore release.keystore \
+            -storepass "${{ secrets.KEYSTORE_PASSWORD }}" \
+            -keypass "${{ secrets.KEY_PASSWORD }}" \
+            "${{ steps.apk.outputs.apk_path }}" \
+            "${{ secrets.KEY_ALIAS }}"
 
-      # ----------------------------
-      # Sign APK (only stable)
-      # ----------------------------
-      - name: Sign Release APK
-        if: steps.track.outputs.track == 'stable'
-        uses: r0adkll/sign-android-release@v1
-        with:
-          releaseDirectory: app/build/outputs/apk/release
-          signingKeyBase64: ${{ secrets.KEYSTORE_BASE64 }}
-          alias: ${{ secrets.KEY_ALIAS }}
-          keyStorePassword: ${{ secrets.KEY_STORE_PASSWORD }}
-          keyPassword: ${{ secrets.KEY_PASSWORD }}
-
-      # ----------------------------
-      # Versioning
-      # ----------------------------
-      - name: Version Info
-        id: version
-        run: |
-          SHORT_SHA=$(git rev-parse --short HEAD)
-          BUILD_NUM=${{ github.run_number }}
-          TRACK=${{ steps.track.outputs.track }}
-
-          echo "sha=$SHORT_SHA" >> $GITHUB_OUTPUT
-          echo "build=$BUILD_NUM" >> $GITHUB_OUTPUT
-          echo "track=$TRACK" >> $GITHUB_OUTPUT
-
-      # ----------------------------
-      # Rename APK
-      # ----------------------------
+      # 📛 Rename APK
       - name: Rename APK
         run: |
-          if [ "${{ steps.version.outputs.track }}" = "stable" ]; then
-            APK_PATH=$(find app/build/outputs/apk/release -name "*.apk" | head -n 1)
-          else
-            APK_PATH=$(find app/build/outputs/apk/debug -name "*.apk" | head -n 1)
-          fi
+          mkdir output
+          cp "${{ steps.apk.outputs.apk_path }}" output/
+          mv output/*.apk output/Rock-Wallpapers-HD-v3.5.0.apk
 
-          cp "$APK_PATH" "app-${{ steps.version.outputs.track }}-${{ steps.version.outputs.build }}-${{ steps.version.outputs.sha }}.apk"
-
-      # ----------------------------
-      # Upload artifact
-      # ----------------------------
-      - name: Upload APK
+      # 📤 Upload artifact
+      - name: Upload APK Artifact
         uses: actions/upload-artifact@v4
         with:
-          name: apk-${{ steps.version.outputs.track }}-${{ steps.version.outputs.build }}
-          path: app-*.apk
+          name: Rock-Wallpapers-HD
+          path: output/*.apk
+
+      # 🚀 GitHub Release
+      - name: Create Release
+        uses: softprops/action-gh-release@v2
+        with:
+          tag_name: v3.5.0
+          name: Rock Wallpapers HD v3.5.0
+          files: output/*.apk
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
