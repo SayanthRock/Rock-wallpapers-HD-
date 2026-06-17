@@ -50,6 +50,7 @@ import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.blur
+import androidx.compose.ui.draw.rotate
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.draw.drawBehind
 import androidx.compose.ui.draw.drawWithContent
@@ -372,6 +373,7 @@ fun MainScreen(
     var aiAspectRatio by remember { mutableStateOf("9:16") }
     var aiImageSize by remember { mutableStateOf("1K") }
     var aiErrorMessage by remember { mutableStateOf<String?>(null) }
+    var aiArtStyle by rememberSaveable { mutableStateOf("Heavy Metal Abstract") }
     var isRefreshing by remember { mutableStateOf(false) }
 
     val categories = listOf("Liquid Glass", "Subjects", "Backgrounds", "Nature", "Textures", "Saved", "Custom", "Resolution Centre", "AI Studio")
@@ -1081,6 +1083,8 @@ fun MainScreen(
                         onImageSizeChange = { aiImageSize = it },
                         aiErrorMessage = aiErrorMessage,
                         onErrorMessageChange = { aiErrorMessage = it },
+                        aiArtStyle = aiArtStyle,
+                        onArtStyleChange = { aiArtStyle = it },
                         baseWallpapers = baseWallpapers,
                         selectedPhotoSetter = { selectedPhoto = it },
                         showPreviewSetter = { showPreview = it },
@@ -5516,6 +5520,8 @@ fun AiRockStudioLayout(
     onImageSizeChange: (String) -> Unit,
     aiErrorMessage: String?,
     onErrorMessageChange: (String?) -> Unit,
+    aiArtStyle: String,
+    onArtStyleChange: (String) -> Unit,
     baseWallpapers: androidx.compose.runtime.snapshots.SnapshotStateList<WallpaperItem>,
     selectedPhotoSetter: (Any?) -> Unit,
     showPreviewSetter: (Boolean) -> Unit,
@@ -5523,6 +5529,17 @@ fun AiRockStudioLayout(
     onQuickApplySetter: (String) -> Unit
 ) {
     val presets = listOf("Guitar", "Concert Stage", "Classic Rock", "Drum Kit", "Neon Vinyl", "Heavy Metal", "Psychedelic")
+    
+    val artStyles = listOf(
+        "Heavy Metal Abstract",
+        "Vintage Rock Concert Poster",
+        "Dark Grunge",
+        "Psychedelic Acid Rock",
+        "Neon Cyberpunk Rock",
+        "Classic Rock Photo",
+        "Pop Punk Album Art"
+    )
+    var selectedArtStyle by rememberSaveable { mutableStateOf("Heavy Metal Abstract") }
     
     val triggerGeneration = { keywords: String ->
         onGeneratingChange(true)
@@ -5537,7 +5554,7 @@ fun AiRockStudioLayout(
                     return@launch
                 }
                 
-                val promptText = "A professional ultra-high definition visual theme smartphone wallpaper for Rock & Roll. Keywords and elements describing composition: ${keywords.trim()}. Rich textures, dramatic stage lighting, neon colors, perfect music poster aesthetic, complete smartphone screen composition, no text, no captions."
+                val promptText = "A professional ultra-high definition visual theme smartphone wallpaper for Rock & Roll in $selectedArtStyle art style. Keywords and elements describing composition: ${keywords.trim()}. Rich textures, dramatic stage lighting, neon colors, perfect music poster aesthetic, complete smartphone screen composition, no text, no captions."
 
                 val request = GenerateContentRequest(
                     contents = listOf(
@@ -5708,7 +5725,104 @@ fun AiRockStudioLayout(
                     verticalArrangement = Arrangement.spacedBy(12.dp)
                 ) {
                     Text(
-                        text = "3. CHOOSE RENDERING CONFIGS",
+                        text = "3. SELECT ART STYLE",
+                        fontSize = 11.sp,
+                        fontWeight = FontWeight.Black,
+                        color = MaterialTheme.colorScheme.primary
+                    )
+                    
+                    Row(
+                        modifier = Modifier.fillMaxWidth(),
+                        horizontalArrangement = Arrangement.SpaceBetween,
+                        verticalAlignment = Alignment.CenterVertically
+                    ) {
+                        Row(
+                            verticalAlignment = Alignment.CenterVertically,
+                            horizontalArrangement = Arrangement.spacedBy(8.dp)
+                        ) {
+                            Icon(
+                                imageVector = Icons.Default.Palette,
+                                contentDescription = null,
+                                tint = MaterialTheme.colorScheme.primary,
+                                modifier = Modifier.size(20.dp)
+                            )
+                            Text(
+                                text = "Art Style",
+                                style = MaterialTheme.typography.bodyMedium,
+                                fontWeight = FontWeight.SemiBold
+                            )
+                        }
+                        
+                        Box {
+                            var expanded by remember { mutableStateOf(false) }
+                            
+                            SuggestionChip(
+                                onClick = { expanded = !expanded },
+                                label = { Text(selectedArtStyle, fontSize = 11.sp, fontWeight = FontWeight.Bold) },
+                                icon = {
+                                    Icon(
+                                        imageVector = Icons.Default.ArrowDropDown,
+                                        contentDescription = "Expand Art Styles",
+                                        modifier = Modifier.size(16.dp).rotate(if (expanded) 180f else 0f)
+                                    )
+                                },
+                                shape = RoundedCornerShape(10.dp),
+                                colors = SuggestionChipDefaults.suggestionChipColors(
+                                    containerColor = MaterialTheme.colorScheme.primaryContainer.copy(alpha = 0.8f),
+                                    labelColor = MaterialTheme.colorScheme.primary,
+                                    iconContentColor = MaterialTheme.colorScheme.primary
+                                ),
+                                border = BorderStroke(1.dp, MaterialTheme.colorScheme.primary.copy(alpha = 0.3f)),
+                                modifier = Modifier.testTag("art_style_dropdown_trigger")
+                            )
+                            
+                            DropdownMenu(
+                                expanded = expanded,
+                                onDismissRequest = { expanded = false },
+                                modifier = Modifier
+                                    .background(Color(0xFF16161C))
+                                    .border(1.dp, Color.White.copy(alpha = 0.12f), RoundedCornerShape(8.dp))
+                            ) {
+                                artStyles.forEach { style ->
+                                    DropdownMenuItem(
+                                        text = { 
+                                            Text(
+                                                text = style, 
+                                                fontSize = 12.sp, 
+                                                fontWeight = if (selectedArtStyle == style) FontWeight.Bold else FontWeight.Normal,
+                                                color = if (selectedArtStyle == style) MaterialTheme.colorScheme.primary else Color.White
+                                            ) 
+                                        },
+                                        onClick = {
+                                            selectedArtStyle = style
+                                            expanded = false
+                                        },
+                                        modifier = Modifier.testTag("art_style_option_${style.replace("[^a-zA-Z0-9]".toRegex(), "_").lowercase()}")
+                                    )
+                                }
+                            }
+                        }
+                    }
+                }
+            }
+        }
+
+        item {
+            Card(
+                shape = RoundedCornerShape(18.dp),
+                colors = CardDefaults.cardColors(
+                    containerColor = MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.5f)
+                ),
+                border = BorderStroke(1.dp, MaterialTheme.colorScheme.outline.copy(alpha = 0.12f))
+            ) {
+                Column(
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .padding(16.dp),
+                    verticalArrangement = Arrangement.spacedBy(12.dp)
+                ) {
+                    Text(
+                        text = "4. CHOOSE RENDERING CONFIGS",
                         fontSize = 11.sp,
                         fontWeight = FontWeight.Black,
                         color = MaterialTheme.colorScheme.primary
@@ -5790,6 +5904,112 @@ fun AiRockStudioLayout(
                                     ),
                                     shape = RoundedCornerShape(8.dp)
                                 )
+                            }
+                        }
+                    }
+
+                    HorizontalDivider(color = MaterialTheme.colorScheme.outline.copy(alpha = 0.1f))
+
+                    var isStyleDropdownExpanded by remember { mutableStateOf(false) }
+                    
+                    Column(modifier = Modifier.fillMaxWidth()) {
+                        Row(
+                            modifier = Modifier.fillMaxWidth(),
+                            horizontalArrangement = Arrangement.SpaceBetween,
+                            verticalAlignment = Alignment.CenterVertically
+                        ) {
+                            Column(modifier = Modifier.weight(1f)) {
+                                Text(
+                                    text = "Art Style", 
+                                    style = MaterialTheme.typography.bodyMedium, 
+                                    fontWeight = FontWeight.SemiBold
+                                )
+                                Text(
+                                    text = "Select dynamic aesthetic overlay",
+                                    style = MaterialTheme.typography.bodySmall, 
+                                    color = MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.7f),
+                                    fontSize = 11.sp
+                                )
+                            }
+                            
+                            Box {
+                                Button(
+                                    onClick = { isStyleDropdownExpanded = true },
+                                    shape = RoundedCornerShape(12.dp),
+                                    colors = ButtonDefaults.buttonColors(
+                                        containerColor = MaterialTheme.colorScheme.primaryContainer.copy(alpha = 0.4f),
+                                        contentColor = MaterialTheme.colorScheme.primary
+                                    ),
+                                    border = BorderStroke(1.dp, MaterialTheme.colorScheme.primary.copy(alpha = 0.3f)),
+                                    contentPadding = PaddingValues(horizontal = 14.dp, vertical = 8.dp),
+                                    modifier = Modifier.testTag("art_style_dropdown_trigger")
+                                ) {
+                                    Icon(
+                                        imageVector = Icons.Default.Palette,
+                                        contentDescription = null,
+                                        modifier = Modifier.size(16.dp)
+                                    )
+                                    Spacer(modifier = Modifier.width(8.dp))
+                                    Text(
+                                        text = aiArtStyle, 
+                                        fontWeight = FontWeight.Bold, 
+                                        fontSize = 12.sp
+                                    )
+                                    Spacer(modifier = Modifier.width(4.dp))
+                                    Icon(
+                                        imageVector = if (isStyleDropdownExpanded) Icons.Default.ArrowDropUp else Icons.Default.ArrowDropDown,
+                                        contentDescription = null,
+                                        modifier = Modifier.size(18.dp)
+                                    )
+                                }
+
+                                DropdownMenu(
+                                    expanded = isStyleDropdownExpanded,
+                                    onDismissRequest = { isStyleDropdownExpanded = false },
+                                    modifier = Modifier
+                                        .background(Color(0xFF16161C))
+                                        .border(BorderStroke(1.dp, Color.White.copy(alpha = 0.12f)), RoundedCornerShape(12.dp))
+                                        .testTag("art_style_dropdown_menu"),
+                                    scrollState = rememberScrollState()
+                                ) {
+                                    val stylesList = listOf(
+                                        "Heavy Metal Abstract",
+                                        "Vintage Rock Concert Poster",
+                                        "Dark Grunge",
+                                        "Cyberpunk Neon",
+                                        "Psychedelic Dream",
+                                        "Minimalist Vector"
+                                    )
+                                    stylesList.forEach { style ->
+                                        DropdownMenuItem(
+                                            text = {
+                                                Row(verticalAlignment = Alignment.CenterVertically) {
+                                                    val isSelected = aiArtStyle == style
+                                                    RadioButton(
+                                                        selected = isSelected,
+                                                        onClick = null,
+                                                        colors = RadioButtonDefaults.colors(
+                                                            selectedColor = MaterialTheme.colorScheme.primary
+                                                        ),
+                                                        modifier = Modifier.size(24.dp)
+                                                    )
+                                                    Spacer(modifier = Modifier.width(12.dp))
+                                                    Text(
+                                                        text = style,
+                                                        color = if (isSelected) MaterialTheme.colorScheme.primary else Color.White,
+                                                        fontWeight = if (isSelected) FontWeight.Bold else FontWeight.Normal,
+                                                        fontSize = 13.sp
+                                                    )
+                                                }
+                                            },
+                                            onClick = {
+                                                onArtStyleChange(style)
+                                                isStyleDropdownExpanded = false
+                                            },
+                                            modifier = Modifier.testTag("art_style_item_${style.replace("[^a-zA-Z0-9]".toRegex(), "_").lowercase()}")
+                                        )
+                                    }
+                                }
                             }
                         }
                     }
