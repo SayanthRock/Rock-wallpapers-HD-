@@ -288,6 +288,32 @@ val DiamondShape = object : Shape {
     }
 }
 
+val HeartShape = object : Shape {
+    override fun createOutline(
+        size: androidx.compose.ui.geometry.Size,
+        layoutDirection: androidx.compose.ui.unit.LayoutDirection,
+        density: androidx.compose.ui.unit.Density
+    ): Outline {
+        val path = androidx.compose.ui.graphics.Path().apply {
+            val width = size.width
+            val height = size.height
+            moveTo(width / 2f, height * 0.25f)
+            cubicTo(
+                width * 0.15f, height * -0.05f,
+                -width * 0.1f, height * 0.45f,
+                width / 2f, height * 0.95f
+            )
+            cubicTo(
+                width * 1.1f, height * 0.45f,
+                width * 0.85f, height * -0.05f,
+                width / 2f, height * 0.25f
+            )
+            close()
+        }
+        return Outline.Generic(path)
+    }
+}
+
 @Composable
 fun getShapeFromDescriptor(shapeName: String): Shape {
     return when (shapeName) {
@@ -1449,19 +1475,38 @@ fun MainScreen(
                                     verticalArrangement = Arrangement.spacedBy(6.dp),
                                     horizontalAlignment = Alignment.CenterHorizontally
                                 ) {
-                                    // Favorite Heart Overlay
+                                    // Animated Favorite button properties
+                                    val isFavorited = savedUrls.contains(item.url)
+                                    val favoriteButtonScale by animateFloatAsState(
+                                        targetValue = if (isFavorited) 1.15f else 1.0f,
+                                        animationSpec = spring(dampingRatio = 0.45f, stiffness = 180f),
+                                        label = "favorite_scale"
+                                    )
+                                    val favoriteBgColor by animateColorAsState(
+                                        targetValue = if (isFavorited) Color(0xFFFF2D55).copy(alpha = 0.85f) else Color.Black.copy(alpha = 0.45f),
+                                        animationSpec = tween(durationMillis = 255),
+                                        label = "favorite_bg_color"
+                                    )
+
+                                    // Favorite Heart Overlay (HeartShape Custom Shape)
                                     IconButton(
                                         onClick = { toggleSaveWallpaper(item.url) },
                                         modifier = Modifier
-                                            .size(36.dp)
-                                            .background(Color.Black.copy(alpha = 0.45f), CircleShape)
+                                            .graphicsLayer {
+                                                scaleX = favoriteButtonScale
+                                                scaleY = favoriteButtonScale
+                                            }
+                                            .size(38.dp)
+                                            .background(favoriteBgColor, HeartShape)
                                             .testTag("favorite_button_${item.title.replace("[^a-zA-Z0-9]".toRegex(), "_").lowercase()}")
                                     ) {
                                         Icon(
-                                            imageVector = if (savedUrls.contains(item.url)) Icons.Default.Favorite else Icons.Default.FavoriteBorder,
+                                            imageVector = if (isFavorited) Icons.Default.Favorite else Icons.Default.FavoriteBorder,
                                             contentDescription = "Favorite ${item.title}",
-                                            tint = if (savedUrls.contains(item.url)) Color.Red else Color.White,
-                                            modifier = Modifier.size(18.dp)
+                                            tint = Color.White,
+                                            modifier = Modifier
+                                                .size(18.dp)
+                                                .padding(top = 1.dp)
                                         )
                                     }
 
