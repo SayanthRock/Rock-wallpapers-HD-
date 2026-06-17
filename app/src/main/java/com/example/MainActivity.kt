@@ -313,23 +313,6 @@ fun MainScreen(
     val sharedPreferences = remember {
         context.getSharedPreferences("rockpaper_saved_walls", android.content.Context.MODE_PRIVATE)
     }
-    
-    // Loaded state from local storage SharedPreferences
-    val savedUrls = remember {
-        val savedSet = sharedPreferences.getStringSet("saved_urls", emptySet()) ?: emptySet()
-        mutableStateListOf<String>().apply { addAll(savedSet) }
-    }
-
-    val toggleSaveWallpaper = remember {
-        { url: String ->
-            if (savedUrls.contains(url)) {
-                savedUrls.remove(url)
-            } else {
-                savedUrls.add(url)
-            }
-            sharedPreferences.edit().putStringSet("saved_urls", savedUrls.toSet()).apply()
-        }
-    }
 
     var appBackgroundUrl by remember {
         mutableStateOf(sharedPreferences.getString("app_bg_url", null))
@@ -612,11 +595,53 @@ fun MainScreen(
         )
     }
 
+    // Instantiating Room Database Repository
+    val favoritesRepository = remember(context) {
+        val database = com.example.data.AppDatabase.getDatabase(context.applicationContext)
+        com.example.data.FavoritesRepository(database.favoriteDao())
+    }
+
+    // Observe favorites list reactively from Room database!
+    val favoriteEntities by favoritesRepository.allFavorites.collectAsState(initial = emptyList())
+
+    val savedUrls = remember(favoriteEntities) {
+        favoriteEntities.map { it.url }.toSet()
+    }
+
+    val toggleSaveWallpaper = remember(favoriteEntities, baseWallpapers) {
+        { url: String ->
+            scope.launch {
+                if (savedUrls.contains(url)) {
+                    favoritesRepository.removeFavorite(url)
+                } else {
+                    val item = baseWallpapers.find { it.url == url }
+                    val title = item?.title ?: "Saved Custom Rock"
+                    val category = item?.category ?: "Saved"
+                    favoritesRepository.addFavorite(
+                        com.example.data.FavoriteWallpaper(
+                            url = url,
+                            title = title,
+                            category = category
+                        )
+                    )
+                }
+            }
+            Unit
+        }
+    }
+
     // Filtered result logic based on Active Search Query vs. Selected Category Tab and Tag Filter
-    val filteredWallpapers = remember(searchQuery, selectedCategory, baseWallpapers.size, savedUrls.size, selectedTagFilter) {
+    val filteredWallpapers = remember(searchQuery, selectedCategory, baseWallpapers.size, savedUrls.size, selectedTagFilter, favoriteEntities) {
         val initialList = if (searchQuery.trim().isEmpty()) {
             if (selectedCategory == "Saved") {
-                baseWallpapers.filter { savedUrls.contains(it.url) }
+                favoriteEntities.map { fav ->
+                    baseWallpapers.find { it.url == fav.url } ?: WallpaperItem(
+                        url = fav.url,
+                        category = fav.category,
+                        title = fav.title,
+                        tags = listOf("saved", "favorite")
+                    )
+                }
             } else {
                 baseWallpapers.filter { it.category == selectedCategory }
             }
