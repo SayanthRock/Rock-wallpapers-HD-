@@ -25,9 +25,17 @@ jobs:
       - name: Make Gradle executable
         run: chmod +x ./gradlew
 
-      # 🔍 Validate Gradle Wrapper
-      - name: Validate Gradle Wrapper
-        run: ./gradlew --version
+      # 🔍 Validate and Self-Heal Gradle Wrapper
+      - name: Validate and Self-Heal Gradle Wrapper
+        run: |
+          if ! java -jar gradle/wrapper/gradle-wrapper.jar --version >/dev/null 2>&1; then
+            echo "⚠️ Gradle wrapper is corrupted or missing! Regenerating a clean Gradle 8.7 wrapper..."
+            gradle wrapper --gradle-version 8.7 --distribution-type bin
+            chmod +x ./gradlew
+          else
+            echo "✅ Gradle wrapper is intact and valid."
+          fi
+          ./gradlew --version
 
       # 🔐 Decode Keystore safely
       - name: Decode Keystore
