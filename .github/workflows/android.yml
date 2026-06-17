@@ -134,6 +134,50 @@ jobs:
           KEY_PASSWORD: ${{ secrets.SIGNINGKEYPASSWORD }}
           SIGNING_KEYSTORE: ${{ secrets.SIGNING_KEYSTORE }}
 
+      # 9.1 Generate .apks using bundletool
+      - name: Generate .apks using bundletool
+        working-directory: ${{ env.PROJECT_DIR }}
+        run: |
+          echo "Downloading bundletool..."
+          wget -q https://github.com/google/bundletool/releases/download/1.17.0/bundletool-all-1.17.0.jar -O bundletool.jar
+          
+          AAB_PATH=$(find app/build/outputs/bundle/release -name "*.aab" | head -n 1)
+          if [ -z "$AAB_PATH" ]; then
+            echo "Error: No AAB found to convert!"
+            exit 1
+          fi
+          
+          if [ -f "release-key.jks" ]; then
+            echo "Using release-key.jks to generate signed .apks"
+            java -jar bundletool.jar build-apks \
+              --bundle="$AAB_PATH" \
+              --output=app/build/outputs/bundle/release/app-release.apks \
+              --ks=release-key.jks \
+              --ks-pass=pass:"$STORE_PASSWORD" \
+              --ks-key-alias="$KEY_ALIAS" \
+              --key-pass=pass:"$KEY_PASSWORD"
+          else
+            echo "Using debug.keystore fallback to generate .apks"
+            DEBUG_KS=$(find . -name "debug.keystore" | head -n 1)
+            if [ -n "$DEBUG_KS" ]; then
+              java -jar bundletool.jar build-apks \
+                --bundle="$AAB_PATH" \
+                --output=app/build/outputs/bundle/release/app-release.apks \
+                --ks="$DEBUG_KS" \
+                --ks-pass=pass:android \
+                --ks-key-alias=androiddebugkey \
+                --key-pass=pass:android
+            else
+              java -jar bundletool.jar build-apks \
+                --bundle="$AAB_PATH" \
+                --output=app/build/outputs/bundle/release/app-release.apks
+            fi
+          fi
+        env:
+          STORE_PASSWORD: ${{ secrets.SIGNINGKEYSTOREPASSWORD }}
+          KEY_ALIAS: ${{ secrets.SIGNINGKEYALIAS }}
+          KEY_PASSWORD: ${{ secrets.SIGNINGKEYPASSWORD }}
+
       # 9.5 Upload Release Artifacts
       - name: Upload Release Artifacts
         uses: actions/upload-artifact@v4
@@ -142,6 +186,7 @@ jobs:
           path: |
             ${{ env.PROJECT_DIR }}/app/build/outputs/apk/release/*.apk
             ${{ env.PROJECT_DIR }}/app/build/outputs/bundle/release/*.aab
+            ${{ env.PROJECT_DIR }}/app/build/outputs/bundle/release/*.apks
 
       # 10. Create GitHub Release
       - name: Create GitHub Release
@@ -151,6 +196,7 @@ jobs:
           files: |
             ${{ env.PROJECT_DIR }}/app/build/outputs/apk/release/*.apk
             ${{ env.PROJECT_DIR }}/app/build/outputs/bundle/release/*.aab
+            ${{ env.PROJECT_DIR }}/app/build/outputs/bundle/release/*.apks
           generate_release_notes: true
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
