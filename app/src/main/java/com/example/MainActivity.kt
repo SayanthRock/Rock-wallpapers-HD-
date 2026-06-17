@@ -1956,6 +1956,24 @@ fun MainScreen(
                     Toast.makeText(context, "App screen background customized!", Toast.LENGTH_SHORT).show()
                     onResult(true)
                     showPreview = false
+                } else if (type == -2) {
+                    scope.launch {
+                        val uri = saveCustomizedImageToUri(
+                            context = context,
+                            photo = selectedPhoto!!,
+                            scale = scale,
+                            offset = offset,
+                            settings = settings,
+                            selectedRenderOption = "HD 1080p"
+                        )
+                        onResult(uri != null)
+                        if (uri != null) {
+                            launchCropAndSetWallpaperIntent(context, uri)
+                            showPreview = false
+                        } else {
+                            Toast.makeText(context, "Failed to prepare custom wallpaper for system set.", Toast.LENGTH_SHORT).show()
+                        }
+                    }
                 } else {
                     scope.launch {
                         val success = performSetWallpaper(
@@ -2019,7 +2037,8 @@ fun MainScreen(
                         val promptOptions = listOf(
                             Triple("Home Screen Only", Icons.Default.Home, android.app.WallpaperManager.FLAG_SYSTEM),
                             Triple("Lock Screen Only", Icons.Default.Lock, android.app.WallpaperManager.FLAG_LOCK),
-                            Triple("Both Home & Lock", Icons.Default.Layers, android.app.WallpaperManager.FLAG_SYSTEM or android.app.WallpaperManager.FLAG_LOCK)
+                            Triple("Both Home & Lock", Icons.Default.Layers, android.app.WallpaperManager.FLAG_SYSTEM or android.app.WallpaperManager.FLAG_LOCK),
+                            Triple("Launch System Cropper ✂️", Icons.Default.Crop, -2)
                         )
                         
                         promptOptions.forEach { (label, icon, typeFlag) ->
@@ -2028,12 +2047,22 @@ fun MainScreen(
                                     isQuickSettingWallpaper = true
                                     showQuickApplyPrompt = false
                                     scope.launch {
-                                        val success = performQuickSetWallpaper(context, quickApplyPhoto!!, typeFlag)
-                                        isQuickSettingWallpaper = false
-                                        if (success) {
-                                            Toast.makeText(context, "Wallpaper applied successfully!", Toast.LENGTH_SHORT).show()
+                                        if (typeFlag == -2) {
+                                            val uri = getSavedImageUri(context, quickApplyPhoto!!)
+                                            isQuickSettingWallpaper = false
+                                            if (uri != null) {
+                                                launchCropAndSetWallpaperIntent(context, uri)
+                                            } else {
+                                                Toast.makeText(context, "Failed to download image.", Toast.LENGTH_SHORT).show()
+                                            }
                                         } else {
-                                            Toast.makeText(context, "Failed to set wallpaper direct.", Toast.LENGTH_SHORT).show()
+                                            val success = performQuickSetWallpaper(context, quickApplyPhoto!!, typeFlag)
+                                            isQuickSettingWallpaper = false
+                                            if (success) {
+                                                Toast.makeText(context, "Wallpaper applied successfully!", Toast.LENGTH_SHORT).show()
+                                            } else {
+                                                Toast.makeText(context, "Failed to set wallpaper direct.", Toast.LENGTH_SHORT).show()
+                                            }
                                         }
                                     }
                                 },
@@ -4372,6 +4401,7 @@ fun WallpaperPreviewDialog(
                                             Triple("Home Screen Only", Icons.Default.Home, WallpaperManager.FLAG_SYSTEM),
                                             Triple("Lock Screen Only", Icons.Default.Lock, WallpaperManager.FLAG_LOCK),
                                             Triple("Both Home & Lock", Icons.Default.Layers, WallpaperManager.FLAG_SYSTEM or WallpaperManager.FLAG_LOCK),
+                                            Triple("System Crop & Set (Intent) ✂️", Icons.Default.Crop, -2),
                                             Triple("Set as App Background 📱", Icons.Default.Palette, -1)
                                         )
                                         
@@ -4453,6 +4483,347 @@ fun WallpaperPreviewDialog(
                 }
             }
         }
+    }
+}
+
+// Safe Launch Wallpaper Crop and Set Intent via Android WallpaperManager
+private fun launchCropAndSetWallpaperIntent(context: android.content.Context, uri: android.net.Uri) {
+    try {
+        val wm = android.app.WallpaperManager.getInstance(context)
+        val intent = wm.getCropAndSetWallpaperIntent(uri)
+        intent.addFlags(android.content.Intent.FLAG_GRANT_READ_URI_PERMISSION)
+        context.startActivity(intent)
+    } catch (e: Exception) {
+        e.printStackTrace()
+        try {
+            val intent = android.content.Intent(android.content.Intent.ACTION_ATTACH_DATA).apply {
+                addCategory(android.content.Intent.CATEGORY_DEFAULT)
+                setDataAndType(uri, "image/*")
+                putExtra("mimeType", "image/*")
+                addFlags(android.content.Intent.FLAG_GRANT_READ_URI_PERMISSION)
+            }
+            context.startActivity(android.content.Intent.createChooser(intent, "Set Wallpaper"))
+        } catch (fallbackEx: Exception) {
+            fallbackEx.printStackTrace()
+            android.widget.Toast.makeText(
+                context,
+                "No companion application available to crop. Customized image is saved successfully in your Gallery/Pictures folder.",
+                android.widget.Toast.LENGTH_LONG
+            ).show()
+        }
+    }
+}
+
+// Downloads/Saves a raw image from url/resource and returns the local content Uri.
+private suspend fun getSavedImageUri(
+    context: android.content.Context,
+    imageUrl: Any
+): android.net.Uri? = withContext(Dispatchers.IO) {
+    try {
+        val bitmap: Bitmap = when (imageUrl) {
+            is Bitmap -> imageUrl
+            else -> {
+                val request = ImageRequest.Builder(context)
+                    .data(imageUrl)
+                    .allowHardware(false)
+                    .build()
+                val result = ImageLoader(context).execute(request)
+                if (result is SuccessResult) {
+                    (result.drawable as BitmapDrawable).bitmap
+                } else {
+                    return@withContext null
+                }
+            }
+        }
+
+        val filename = "wallpaper_${System.currentTimeMillis()}.jpg"
+        val contentResolver = context.contentResolver
+        val contentValues = android.content.ContentValues().apply {
+            put(android.provider.MediaStore.MediaColumns.DISPLAY_NAME, filename)
+            put(android.provider.MediaStore.MediaColumns.MIME_TYPE, "image/jpeg")
+            if (android.os.Build.VERSION.SDK_INT >= android.os.Build.VERSION_CODES.Q) {
+                put(android.provider.MediaStore.MediaColumns.RELATIVE_PATH, android.os.Environment.DIRECTORY_PICTURES + "/PaperRockWallpapers")
+                put(android.provider.MediaStore.MediaColumns.IS_PENDING, 1)
+            }
+        }
+
+        val imageUri = contentResolver.insert(android.provider.MediaStore.Images.Media.EXTERNAL_CONTENT_URI, contentValues)
+        if (imageUri != null) {
+            val outputStream: java.io.OutputStream? = contentResolver.openOutputStream(imageUri)
+            if (outputStream != null) {
+                bitmap.compress(Bitmap.CompressFormat.JPEG, 100, outputStream)
+                outputStream.close()
+            }
+            if (android.os.Build.VERSION.SDK_INT >= android.os.Build.VERSION_CODES.Q) {
+                contentValues.clear()
+                contentValues.put(android.provider.MediaStore.MediaColumns.IS_PENDING, 0)
+                contentResolver.update(imageUri, contentValues, null, null)
+            }
+        }
+        imageUri
+    } catch (e: Exception) {
+        e.printStackTrace()
+        null
+    }
+}
+
+// Helper to render and save a CUSTOMIZED wallpaper as a Uri.
+private suspend fun saveCustomizedImageToUri(
+    context: android.content.Context,
+    photo: Any,
+    scale: Float,
+    offset: androidx.compose.ui.geometry.Offset,
+    settings: EditorSettings,
+    selectedRenderOption: String
+): android.net.Uri? = withContext(Dispatchers.IO) {
+    try {
+        val renderSize = when (selectedRenderOption) {
+            "SD Preview" -> Pair(400, 800)
+            "HD 1080p" -> Pair(1080, 2160)
+            else -> Pair(2160, 4320) // UHD 4K
+        }
+        val targetWidth = renderSize.first
+        val targetHeight = renderSize.second
+
+        val imageLoader = ImageLoader(context)
+        val request = ImageRequest.Builder(context)
+            .data(photo)
+            .allowHardware(false)
+            .size(targetWidth, targetHeight)
+            .build()
+
+        val result = imageLoader.execute(request)
+        if (result !is SuccessResult) return@withContext null
+
+        val drawable = result.drawable
+        var isCreatedBitmap = false
+        val srcBitmap = if (drawable is BitmapDrawable) {
+            drawable.bitmap
+        } else {
+            isCreatedBitmap = true
+            val bitmap = Bitmap.createBitmap(
+                drawable.intrinsicWidth.coerceAtLeast(1),
+                drawable.intrinsicHeight.coerceAtLeast(1),
+                Bitmap.Config.ARGB_8888
+            )
+            val canvas = android.graphics.Canvas(bitmap)
+            drawable.setBounds(0, 0, canvas.width, canvas.height)
+            drawable.draw(canvas)
+            bitmap
+        }
+
+        val resultBitmap = Bitmap.createBitmap(targetWidth, targetHeight, Bitmap.Config.ARGB_8888)
+        val canvas = Canvas(resultBitmap)
+
+        // 1) RENDER BACKGROUND LAYER
+        val bgBlurVal = if (settings.isDepthMode) settings.bgBlurValue else settings.blurValue
+        val bgColorFilterName = if (settings.isDepthMode) settings.bgColorFilterName else settings.colorFilterName
+        val bgEffectName = if (settings.isDepthMode) settings.bgEffectName else settings.effectName
+
+        val tempBgBitmap = Bitmap.createBitmap(targetWidth, targetHeight, Bitmap.Config.ARGB_8888)
+        val tempBgCanvas = Canvas(tempBgBitmap)
+        val bgPaint = Paint(Paint.FILTER_BITMAP_FLAG)
+        val bgMatrix = Matrix()
+
+        val scX = targetWidth.toFloat() / srcBitmap.width
+        val scY = targetHeight.toFloat() / srcBitmap.height
+        val baseScale = maxOf(scX, scY)
+
+        bgMatrix.postScale(baseScale, baseScale)
+        bgMatrix.postTranslate((targetWidth - srcBitmap.width * baseScale) / 2f, (targetHeight - srcBitmap.height * baseScale) / 2f)
+
+        // Apply scale and translation from layout coordinates (relative to resolution scale factor)
+        val displayMetrics = context.resources.displayMetrics
+        val screenW = displayMetrics.widthPixels
+        val screenH = displayMetrics.heightPixels
+        val scaleFactorX = targetWidth.toFloat() / screenW
+        val scaleFactorY = targetHeight.toFloat() / screenH
+
+        bgMatrix.postScale(scale, scale, targetWidth / 2f, targetHeight / 2f)
+        bgMatrix.postTranslate(offset.x * scaleFactorX, offset.y * scaleFactorY)
+
+        // Apply ColorMatrix filter mapping
+        val bgMatrixVal = FilterMatrices.getMapping(bgColorFilterName)
+        val androidBgMatrix = android.graphics.ColorMatrix(bgMatrixVal)
+        bgPaint.colorFilter = android.graphics.ColorMatrixColorFilter(androidBgMatrix)
+
+        tempBgCanvas.drawBitmap(srcBitmap, bgMatrix, bgPaint)
+
+        applyBitmapEffects(tempBgBitmap, tempBgCanvas, bgEffectName)
+
+        val finalBgBitmap = if (bgBlurVal > 1f) {
+            val radius = bgBlurVal.toInt().coerceIn(1, 45)
+            fastBlur(tempBgBitmap, radius)
+        } else {
+            tempBgBitmap
+        }
+
+        canvas.save()
+        if (settings.isDepthMode) {
+            val subSizeW = targetWidth * settings.subjectScaleRatio
+            val subSizeH = subSizeW / 0.68f
+
+            val left = (targetWidth - subSizeW) / 2f
+            val top = (targetHeight - subSizeH) / 2f
+            val right = left + subSizeW
+            val bottom = top + subSizeH
+
+            val clipPath = Path()
+            when (settings.subjectShape) {
+                "Portal" -> {
+                    clipPath.addCircle(targetWidth / 2f, targetHeight / 2f, subSizeW / 2f, Path.Direction.CW)
+                }
+                "Shield" -> {
+                    clipPath.moveTo(left + subSizeW * 0.5f, top)
+                    clipPath.lineTo(right, top + subSizeH * 0.25f)
+                    clipPath.lineTo(right, top + subSizeH * 0.75f)
+                    clipPath.lineTo(left + subSizeW * 0.5f, bottom)
+                    clipPath.lineTo(left, top + subSizeH * 0.75f)
+                    clipPath.lineTo(left, top + subSizeH * 0.25f)
+                    clipPath.close()
+                }
+                "Crown" -> {
+                    clipPath.moveTo(left + subSizeW * 0.5f, top)
+                    clipPath.lineTo(right, top + subSizeH * 0.5f)
+                    clipPath.lineTo(left + subSizeW * 0.5f, bottom)
+                    clipPath.lineTo(left, top + subSizeH * 0.5f)
+                    clipPath.close()
+                }
+                else -> {
+                    val rectF = RectF(left, top, right, bottom)
+                    clipPath.addRoundRect(rectF, subSizeW / 2f, subSizeW / 2f, Path.Direction.CW)
+                }
+            }
+            if (android.os.Build.VERSION.SDK_INT >= android.os.Build.VERSION_CODES.O) {
+                canvas.clipOutPath(clipPath)
+            } else {
+                @Suppress("DEPRECATION")
+                canvas.clipPath(clipPath, android.graphics.Region.Op.DIFFERENCE)
+            }
+        }
+        if (settings.isDepthMode && settings.displayIsolationMode == "Subject Only") {
+            canvas.drawColor(android.graphics.Color.BLACK)
+        } else {
+            canvas.drawBitmap(finalBgBitmap, 0f, 0f, null)
+        }
+        canvas.restore()
+        
+        if (finalBgBitmap != tempBgBitmap) finalBgBitmap.recycle()
+        tempBgBitmap.recycle()
+
+        // 2) RENDER SUBJECT CUTOUT LAYER
+        if (settings.isDepthMode && settings.displayIsolationMode != "Background Only") {
+            val subSizeW = targetWidth * settings.subjectScaleRatio
+            val subSizeH = subSizeW / 0.68f
+
+            val left = (targetWidth - subSizeW) / 2f
+            val top = (targetHeight - subSizeH) / 2f
+            val right = left + subSizeW
+            val bottom = top + subSizeH
+
+            val clipPath = Path()
+            when (settings.subjectShape) {
+                "Portal" -> {
+                    clipPath.addCircle(targetWidth / 2f, targetHeight / 2f, subSizeW / 2f, Path.Direction.CW)
+                }
+                "Shield" -> {
+                    clipPath.moveTo(left + subSizeW * 0.5f, top)
+                    clipPath.lineTo(right, top + subSizeH * 0.25f)
+                    clipPath.lineTo(right, top + subSizeH * 0.75f)
+                    clipPath.lineTo(left + subSizeW * 0.5f, bottom)
+                    clipPath.lineTo(left, top + subSizeH * 0.75f)
+                    clipPath.lineTo(left, top + subSizeH * 0.25f)
+                    clipPath.close()
+                }
+                "Crown" -> {
+                    clipPath.moveTo(left + subSizeW * 0.5f, top)
+                    clipPath.lineTo(right, top + subSizeH * 0.5f)
+                    clipPath.lineTo(left + subSizeW * 0.5f, bottom)
+                    clipPath.lineTo(left, top + subSizeH * 0.5f)
+                    clipPath.close()
+                }
+                else -> {
+                    val rectF = RectF(left, top, right, bottom)
+                    clipPath.addRoundRect(rectF, subSizeW / 2f, subSizeW / 2f, Path.Direction.CW)
+                }
+            }
+
+            val borderPaint = Paint(Paint.ANTI_ALIAS_FLAG).apply {
+                style = Paint.Style.STROKE
+                strokeWidth = 10f
+                color = android.graphics.Color.WHITE
+            }
+            canvas.drawPath(clipPath, borderPaint)
+
+            canvas.save()
+            canvas.clipPath(clipPath)
+
+            val subPaint = Paint(Paint.FILTER_BITMAP_FLAG)
+            val subMatrix = Matrix()
+
+            subMatrix.postScale(baseScale, baseScale)
+            subMatrix.postTranslate((targetWidth - srcBitmap.width * baseScale) / 2f, (targetHeight - srcBitmap.height * baseScale) / 2f)
+            
+            subMatrix.postScale(scale, scale, targetWidth / 2f, targetHeight / 2f)
+            subMatrix.postTranslate(offset.x * scaleFactorX, offset.y * scaleFactorY)
+
+            val subMatrixVal = FilterMatrices.getMapping(settings.subjectColorFilterName)
+            val androidSubMatrix = android.graphics.ColorMatrix(subMatrixVal)
+            subPaint.colorFilter = android.graphics.ColorMatrixColorFilter(androidSubMatrix)
+
+            val tempSubBitmap = Bitmap.createBitmap(targetWidth, targetHeight, Bitmap.Config.ARGB_8888)
+            val tempSubCanvas = Canvas(tempSubBitmap)
+            tempSubCanvas.drawBitmap(srcBitmap, subMatrix, subPaint)
+
+            applyBitmapEffects(tempSubBitmap, tempSubCanvas, settings.subjectEffectName)
+
+            val finalSubBitmap = if (settings.subjectBlurValue > 1f) {
+                val radius = settings.subjectBlurValue.toInt().coerceIn(1, 45)
+                fastBlur(tempSubBitmap, radius)
+            } else {
+                tempSubBitmap
+            }
+
+            canvas.drawBitmap(finalSubBitmap, 0f, 0f, null)
+            
+            if (finalSubBitmap != tempSubBitmap) finalSubBitmap.recycle()
+            tempSubBitmap.recycle()
+
+            canvas.restore()
+        }
+
+        val filename = "custom_wallpaper_${System.currentTimeMillis()}.jpg"
+        val contentResolver = context.contentResolver
+        val contentValues = android.content.ContentValues().apply {
+            put(android.provider.MediaStore.MediaColumns.DISPLAY_NAME, filename)
+            put(android.provider.MediaStore.MediaColumns.MIME_TYPE, "image/jpeg")
+            if (android.os.Build.VERSION.SDK_INT >= android.os.Build.VERSION_CODES.Q) {
+                put(android.provider.MediaStore.MediaColumns.RELATIVE_PATH, android.os.Environment.DIRECTORY_PICTURES + "/PaperRockWallpapers")
+                put(android.provider.MediaStore.MediaColumns.IS_PENDING, 1)
+            }
+        }
+
+        val imageUri = contentResolver.insert(android.provider.MediaStore.Images.Media.EXTERNAL_CONTENT_URI, contentValues)
+        if (imageUri != null) {
+            val outputStream: java.io.OutputStream? = contentResolver.openOutputStream(imageUri)
+            if (outputStream != null) {
+                resultBitmap.compress(Bitmap.CompressFormat.JPEG, 100, outputStream)
+                outputStream.close()
+            }
+            if (android.os.Build.VERSION.SDK_INT >= android.os.Build.VERSION_CODES.Q) {
+                contentValues.clear()
+                contentValues.put(android.provider.MediaStore.MediaColumns.IS_PENDING, 0)
+                contentResolver.update(imageUri, contentValues, null, null)
+            }
+        }
+
+        if (isCreatedBitmap) srcBitmap.recycle()
+        resultBitmap.recycle()
+        
+        imageUri
+    } catch (e: Exception) {
+        e.printStackTrace()
+        null
     }
 }
 
