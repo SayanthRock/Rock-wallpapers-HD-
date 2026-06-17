@@ -16,7 +16,7 @@ jobs:
       contents: write
     env:
       GRADLE_OPTS: "-Djava.net.preferIPv4Stack=true"
-      SIGNING_KEYSTORE: ${{ secrets.SIGNING_KEYSTORE }}
+      SIGNING_KEYSTORE: ${{ secrets.SIGNING_KEYSTORE || secrets.SIGNING_KEYSTORE_BASE64 }}
 
     steps:
       # 1. Checkout code
@@ -129,9 +129,9 @@ jobs:
         if: env.SIGNING_KEYSTORE != ''
         working-directory: ${{ env.PROJECT_DIR }}
         run: |
-          echo "${{ secrets.SIGNING_KEYSTORE }}" | base64 --decode > release-key.jks
+          echo "$SIGNING_KEYSTORE" | base64 --decode > release-key.jks
         env:
-          SIGNING_KEYSTORE: ${{ secrets.SIGNING_KEYSTORE }}
+          SIGNING_KEYSTORE: ${{ env.SIGNING_KEYSTORE }}
 
       # 9. Build Release APK & Bundle
       - name: Build Release APK & Bundle
@@ -140,10 +140,10 @@ jobs:
           ./gradlew assembleRelease bundleRelease --no-daemon
         env:
           KEYSTORE_PATH: release-key.jks
-          STORE_PASSWORD: ${{ secrets.SIGNINGKEYSTOREPASSWORD }}
-          KEY_ALIAS: ${{ secrets.SIGNINGKEYALIAS }}
-          KEY_PASSWORD: ${{ secrets.SIGNINGKEYPASSWORD }}
-          SIGNING_KEYSTORE: ${{ secrets.SIGNING_KEYSTORE }}
+          STORE_PASSWORD: ${{ secrets.STORE_PASSWORD || secrets.SIGNINGKEYSTOREPASSWORD }}
+          KEY_ALIAS: ${{ secrets.KEY_ALIAS || secrets.SIGNINGKEYALIAS }}
+          KEY_PASSWORD: ${{ secrets.KEY_PASSWORD || secrets.SIGNINGKEYPASSWORD }}
+          SIGNING_KEYSTORE: ${{ env.SIGNING_KEYSTORE }}
 
       # 9.1 Generate .apks using bundletool
       - name: Generate .apks using bundletool
@@ -185,9 +185,9 @@ jobs:
             fi
           fi
         env:
-          STORE_PASSWORD: ${{ secrets.SIGNINGKEYSTOREPASSWORD }}
-          KEY_ALIAS: ${{ secrets.SIGNINGKEYALIAS }}
-          KEY_PASSWORD: ${{ secrets.SIGNINGKEYPASSWORD }}
+          STORE_PASSWORD: ${{ secrets.STORE_PASSWORD || secrets.SIGNINGKEYSTOREPASSWORD }}
+          KEY_ALIAS: ${{ secrets.KEY_ALIAS || secrets.SIGNINGKEYALIAS }}
+          KEY_PASSWORD: ${{ secrets.KEY_PASSWORD || secrets.SIGNINGKEYPASSWORD }}
 
       # 9.5 Upload Release Artifacts
       - name: Upload Release Artifacts
