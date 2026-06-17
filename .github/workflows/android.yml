@@ -40,6 +40,17 @@ jobs:
             chmod +x "$DIR/gradlew" || echo "gradlew not found in $DIR"
           fi
 
+      # 1.8. Decode fallback debug.keystore if debug.keystore.base64 is present
+      - name: Decode Debug Keystore
+        working-directory: ${{ env.PROJECT_DIR }}
+        run: |
+          if [ -f "debug.keystore.base64" ]; then
+            echo "Decoding fallback debug.keystore from debug.keystore.base64..."
+            base64 --decode debug.keystore.base64 > debug.keystore
+          else
+            echo "No debug.keystore.base64 found, skipping automatic decode"
+          fi
+
       # 2. Setup JDK
       - name: Setup JDK
         uses: actions/setup-java@v4
