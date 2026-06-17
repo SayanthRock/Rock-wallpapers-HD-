@@ -1,4 +1,4 @@
-name: Android Multi-Track CI
+name: Android CI (Dev / Beta / Signed Stable)
 
 on:
   push:
@@ -19,6 +19,10 @@ on:
   release:
     types: [published]
 
+env:
+  GRADLE_OPTS: "-Djava.net.preferIPv4Stack=true"
+  VERSION_CODE: ${{ github.run_number }}
+  VERSION_NAME: 1.0.${{ github.run_number }}-${{ github.sha }}
 
 jobs:
   build:
@@ -40,51 +44,82 @@ jobs:
       - name: Make gradlew executable
         run: chmod +x gradlew
 
-      # -------------------------
-      # Decide build type
-      # -------------------------
-      - name: Set build track
+      # ----------------------------
+      # Decode Keystore (only for stable)
+      # ----------------------------
+      - name: Decode Keystore
+        if: github.event_name == 'release' || github.event.inputs.track == 'stable'
+        run: |
+          echo "${{ secrets.KEYSTORE_BASE64 }}" | base64 --decode > release.jks
+
+      # ----------------------------
+      # Decide track
+      # ----------------------------
+      - name: Set track
         id: track
         run: |
           if [ "${{ github.event_name }}" = "push" ]; then
-            echo "track=dev" >> ${GITHUB_OUTPUT}
+            echo "track=dev" >> $GITHUB_OUTPUT
           elif [ "${{ github.event_name }}" = "release" ]; then
-            echo "track=stable" >> ${GITHUB_OUTPUT}
+            echo "track=stable" >> $GITHUB_OUTPUT
           else
-            echo "track=${{ github.event.inputs.track }}" >> ${GITHUB_OUTPUT}
+            echo "track=${{ github.event.inputs.track }}" >> $GITHUB_OUTPUT
           fi
 
-      # -------------------------
-      # Build APK
-      # -------------------------
+      # ----------------------------
+      # Build APK (Debug or Release)
+      # ----------------------------
       - name: Build APK
-        run: ./gradlew assembleDebug
+        run: |
+          if [ "${{ steps.track.outputs.track }}" = "stable" ]; then
+            ./gradlew assembleRelease
+          else
+            ./gradlew assembleDebug
+          fi
 
-      # -------------------------
-      # Versioning system
-      # -------------------------
-      - name: Generate version info
+      # ----------------------------
+      # Sign APK (only stable)
+      # ----------------------------
+      - name: Sign Release APK
+        if: steps.track.outputs.track == 'stable'
+        uses: r0adkll/sign-android-release@v1
+        with:
+          releaseDirectory: app/build/outputs/apk/release
+          signingKeyBase64: ${{ secrets.KEYSTORE_BASE64 }}
+          alias: ${{ secrets.KEY_ALIAS }}
+          keyStorePassword: ${{ secrets.KEY_STORE_PASSWORD }}
+          keyPassword: ${{ secrets.KEY_PASSWORD }}
+
+      # ----------------------------
+      # Versioning
+      # ----------------------------
+      - name: Version Info
         id: version
         run: |
           SHORT_SHA=$(git rev-parse --short HEAD)
           BUILD_NUM=${{ github.run_number }}
           TRACK=${{ steps.track.outputs.track }}
 
-          echo "sha=${SHORT_SHA}" >> ${GITHUB_OUTPUT}
-          echo "build=${BUILD_NUM}" >> ${GITHUB_OUTPUT}
-          echo "track=${TRACK}" >> ${GITHUB_OUTPUT}
+          echo "sha=$SHORT_SHA" >> $GITHUB_OUTPUT
+          echo "build=$BUILD_NUM" >> $GITHUB_OUTPUT
+          echo "track=$TRACK" >> $GITHUB_OUTPUT
 
-      # -------------------------
+      # ----------------------------
       # Rename APK
-      # -------------------------
+      # ----------------------------
       - name: Rename APK
         run: |
-          APK_PATH=$(find app/build/outputs/apk/debug -name "*.apk" | head -n 1)
+          if [ "${{ steps.version.outputs.track }}" = "stable" ]; then
+            APK_PATH=$(find app/build/outputs/apk/release -name "*.apk" | head -n 1)
+          else
+            APK_PATH=$(find app/build/outputs/apk/debug -name "*.apk" | head -n 1)
+          fi
+
           cp "$APK_PATH" "app-${{ steps.version.outputs.track }}-${{ steps.version.outputs.build }}-${{ steps.version.outputs.sha }}.apk"
 
-      # -------------------------
+      # ----------------------------
       # Upload artifact
-      # -------------------------
+      # ----------------------------
       - name: Upload APK
         uses: actions/upload-artifact@v4
         with:
