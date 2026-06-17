@@ -14,8 +14,8 @@ android {
     applicationId = "com.aistudio.rockwallpapers.wmxkzl"
     minSdk = 24
     targetSdk = 36
-    versionCode = System.getenv("VERSION_CODE")?.toIntOrNull() ?: 1
-    versionName = System.getenv("VERSION_NAME") ?: "1.0"
+    versionCode = System.getenv("VERSION_CODE")?.toIntOrNull() ?: 36
+    versionName = System.getenv("VERSION_NAME") ?: "3.6.0"
 
     testInstrumentationRunner = "androidx.test.runner.AndroidJUnitRunner"
   }

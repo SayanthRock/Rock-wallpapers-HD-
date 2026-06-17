@@ -66,7 +66,7 @@ jobs:
         run: |
           mkdir output
           cp "${{ steps.apk.outputs.apk_path }}" output/
-          mv output/*.apk output/Rock-Wallpapers-HD-v3.5.0.apk
+          mv output/*.apk output/Rock-Wallpapers-HD-v3.6.0.apk
 
       # 📤 Upload artifact
       - name: Upload APK Artifact
@@ -79,8 +79,8 @@ jobs:
       - name: Create Release
         uses: softprops/action-gh-release@v2
         with:
-          tag_name: v3.5.0
-          name: Rock Wallpapers HD v3.5.0
+          tag_name: v3.6.0
+          name: Rock Wallpapers HD v3.6.0
           files: output/*.apk
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
