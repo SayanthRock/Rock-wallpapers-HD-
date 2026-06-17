@@ -73,7 +73,7 @@ jobs:
 
       # 🚀 GitHub Release
       - name: Create Release
-        uses: softprops/action-gh-release@v2
+        uses: softprops/action-gh-release@v3
         with:
           tag_name: v3.5.0
           name: Rock Wallpapers HD v3.5.0
