@@ -8,6 +8,9 @@ on:
 env:
   TRACK: internal   # Change to beta / production when needed
 
+permissions:
+  contents: write
+
 jobs:
   deploy:
     runs-on: ubuntu-latest
