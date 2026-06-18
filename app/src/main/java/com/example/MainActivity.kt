@@ -18,6 +18,7 @@ import androidx.activity.enableEdgeToEdge
 import androidx.activity.result.PickVisualMediaRequest
 import androidx.activity.result.contract.ActivityResultContracts
 import androidx.compose.animation.*
+import androidx.compose.animation.core.*
 import androidx.compose.animation.core.spring
 import androidx.compose.animation.core.animateFloatAsState
 import androidx.compose.animation.core.animateDpAsState
@@ -457,7 +458,7 @@ fun MainScreen(
                 tags = listOf("astronaut", "space", "astro", "galaxy", "stars", "helmet")
             ),
             WallpaperItem(
-                url = "https://images.unsplash.com/photo-1614728263952-84ea256f9679?q=90&w=1200&fit=crop",
+                url = "https://images.unsplash.com/photo-1540959733332-eab4deceeaf7?q=90&w=1200&fit=crop",
                 category = "Subjects",
                 title = "Tokyo Neon Cyberpunk",
                 tags = listOf("cyberpunk", "neon", "city", "street", "tokyo", "lights")
@@ -794,6 +795,173 @@ fun MainScreen(
                 .fillMaxSize()
                 .padding(bottom = 12.dp)
         ) {
+            
+            // Signature Premium Glassmorphic Hero Card Banner
+            AnimatedVisibility(
+                visible = searchQuery.trim().isEmpty() && selectedCategory != "AI Studio",
+                enter = expandVertically(animationSpec = spring(stiffness = Spring.StiffnessLow)) + fadeIn(),
+                exit = shrinkVertically(animationSpec = spring(stiffness = Spring.StiffnessLow)) + fadeOut()
+            ) {
+                Card(
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .height(130.dp)
+                        .padding(horizontal = 24.dp, vertical = 6.dp),
+                    shape = RoundedCornerShape(24.dp),
+                    border = BorderStroke(1.dp, Color.White.copy(alpha = 0.15f)),
+                    colors = CardDefaults.cardColors(
+                        containerColor = Color.Transparent
+                    )
+                ) {
+                    Box(
+                        modifier = Modifier
+                            .fillMaxSize()
+                            .background(
+                                Brush.linearGradient(
+                                    colors = listOf(
+                                        Color(0xFF2E0854).copy(alpha = 0.85f), // Royal Midnight Purple
+                                        Color(0xFF120024).copy(alpha = 0.95f), // Ultra obsidian dark
+                                        Color(0xFFFF2D55).copy(alpha = 0.18f)  // Glowing rose pink fade
+                                    ),
+                                    start = androidx.compose.ui.geometry.Offset(0f, 0f),
+                                    end = androidx.compose.ui.geometry.Offset(100f, 300f)
+                                )
+                            )
+                    ) {
+                        // Ambient decoration shapes inside the banner
+                        Box(
+                            modifier = Modifier
+                                .fillMaxSize()
+                                .drawBehind {
+                                    drawCircle(
+                                        color = Color(0xFF9C27B0).copy(alpha = 0.22f),
+                                        radius = 200f,
+                                        center = androidx.compose.ui.geometry.Offset(size.width * 0.85f, size.height * 0.2f)
+                                    )
+                                    drawCircle(
+                                        color = Color(0xFF00E5FF).copy(alpha = 0.12f),
+                                        radius = 150f,
+                                        center = androidx.compose.ui.geometry.Offset(size.width * 0.1f, size.height * 0.8f)
+                                    )
+                                }
+                        )
+
+                        // Glass reflection animated Sweep
+                        var sweepAnimatedState by remember { mutableStateOf(false) }
+                        LaunchedEffect(Unit) {
+                            sweepAnimatedState = true
+                        }
+                        val sweepX by animateFloatAsState(
+                            targetValue = if (sweepAnimatedState) 1500f else -300f,
+                            animationSpec = infiniteRepeatable(
+                                animation = tween(durationMillis = 3500, easing = LinearEasing),
+                                repeatMode = RepeatMode.Restart
+                            ),
+                            label = "banner_sweep"
+                        )
+                        Box(
+                            modifier = Modifier
+                                .fillMaxSize()
+                                .drawBehind {
+                                    val brush = Brush.linearGradient(
+                                        colors = listOf(
+                                            Color.White.copy(alpha = 0f),
+                                            Color.White.copy(alpha = 0.08f),
+                                            Color.White.copy(alpha = 0f)
+                                        ),
+                                        start = androidx.compose.ui.geometry.Offset(sweepX, 0f),
+                                        end = androidx.compose.ui.geometry.Offset(sweepX + 150f, size.height)
+                                    )
+                                    drawRect(brush = brush)
+                                }
+                        )
+
+                        // Layout Content
+                        Row(
+                            modifier = Modifier
+                                .fillMaxSize()
+                                .padding(18.dp),
+                            verticalAlignment = Alignment.CenterVertically,
+                            horizontalArrangement = Arrangement.SpaceBetween
+                        ) {
+                            Column(
+                                modifier = Modifier.weight(1.3f),
+                                verticalArrangement = Arrangement.Center
+                            ) {
+                                Row(
+                                    verticalAlignment = Alignment.CenterVertically,
+                                    horizontalArrangement = Arrangement.spacedBy(6.dp)
+                                ) {
+                                    Box(
+                                        modifier = Modifier
+                                            .background(Color(0xFFFF2D55).copy(alpha = 0.25f), RoundedCornerShape(6.dp))
+                                            .padding(horizontal = 6.dp, vertical = 2.dp)
+                                    ) {
+                                        Text(
+                                            "ELITE RELEASE",
+                                            color = Color(0xFFFF2D55),
+                                            fontSize = 8.sp,
+                                            fontWeight = FontWeight.Black,
+                                            letterSpacing = 1.sp
+                                        )
+                                    }
+                                    Text(
+                                        "STUDIO UPDATE",
+                                        color = Color.White.copy(alpha = 0.5f),
+                                        fontSize = 9.sp,
+                                        fontWeight = FontWeight.Bold,
+                                        letterSpacing = 1.2.sp
+                                    )
+                                }
+                                Spacer(Modifier.height(4.dp))
+                                Text(
+                                    "Rock Wallpapers HD",
+                                    color = Color.White,
+                                    fontWeight = FontWeight.Black,
+                                    fontSize = 18.sp,
+                                    letterSpacing = (-0.3).sp
+                                )
+                                Text(
+                                    "v3.6.0 Curated Luxury Release",
+                                    color = Color.White.copy(alpha = 0.8f),
+                                    fontSize = 11.sp,
+                                    fontWeight = FontWeight.Medium
+                                )
+                            }
+                            
+                            // Glowing Brush Design Art Vector
+                            Box(
+                                modifier = Modifier
+                                    .weight(0.7f)
+                                    .fillMaxHeight(),
+                                contentAlignment = Alignment.CenterEnd
+                            ) {
+                                Box(
+                                    modifier = Modifier
+                                        .size(56.dp)
+                                        .background(Color.White.copy(alpha = 0.05f), HexagonShape)
+                                        .border(1.dp, Color.White.copy(alpha = 0.2f), HexagonShape)
+                                        .drawBehind {
+                                            drawCircle(
+                                                color = Color(0xFFFF2D55).copy(alpha = 0.45f),
+                                                radius = 26f,
+                                                center = androidx.compose.ui.geometry.Offset(size.width/2, size.height/2)
+                                            )
+                                        },
+                                    contentAlignment = Alignment.Center
+                                ) {
+                                    Icon(
+                                        imageVector = Icons.Default.Brush,
+                                        contentDescription = null,
+                                        tint = Color.White,
+                                        modifier = Modifier.size(22.dp)
+                                    )
+                                }
+                            }
+                        }
+                    }
+                }
+            }
             
             // Search Input Block
             OutlinedTextField(
@@ -1224,89 +1392,165 @@ fun MainScreen(
                                 horizontalAlignment = Alignment.CenterHorizontally,
                                 verticalArrangement = Arrangement.Center
                             ) {
+                    val infiniteTransition = rememberInfiniteTransition(label = "pulse_transition")
+                    val pulseScale by infiniteTransition.animateFloat(
+                        initialValue = 1.0f,
+                        targetValue = 1.10f,
+                        animationSpec = infiniteRepeatable(
+                            animation = tween(durationMillis = 1800, easing = FastOutSlowInEasing),
+                            repeatMode = RepeatMode.Reverse
+                        ),
+                        label = "pulse_scale"
+                    )
+
                     if (selectedCategory == "Favorites" && searchQuery.trim().isEmpty()) {
-                        Surface(
-                            modifier = Modifier.size(80.dp),
-                            shape = CircleShape,
-                            color = MaterialTheme.colorScheme.surfaceVariant
-                        ) {
-                            Box(contentAlignment = Alignment.Center) {
-                                Icon(
-                                    Icons.Default.FavoriteBorder,
-                                    contentDescription = "No Favorite Wallpapers",
-                                    modifier = Modifier.size(36.dp),
-                                    tint = MaterialTheme.colorScheme.onSurfaceVariant
-                                )
+                        Box(contentAlignment = Alignment.Center) {
+                            // Pulsing halo rings in background
+                            Box(
+                                modifier = Modifier
+                                    .size(100.dp)
+                                    .graphicsLayer {
+                                        scaleX = pulseScale
+                                        scaleY = pulseScale
+                                    }
+                                    .background(MaterialTheme.colorScheme.primary.copy(alpha = 0.08f), CircleShape)
+                            )
+                            Box(
+                                modifier = Modifier
+                                    .size(120.dp)
+                                    .graphicsLayer {
+                                        scaleX = pulseScale * 1.08f
+                                        scaleY = pulseScale * 1.08f
+                                    }
+                                    .border(1.dp, MaterialTheme.colorScheme.primary.copy(alpha = 0.12f), CircleShape)
+                            )
+                            Surface(
+                                modifier = Modifier.size(80.dp),
+                                shape = CircleShape,
+                                color = MaterialTheme.colorScheme.primaryContainer.copy(alpha = 0.25f),
+                                border = BorderStroke(1.dp, MaterialTheme.colorScheme.primary.copy(alpha = 0.3f))
+                            ) {
+                                Box(contentAlignment = Alignment.Center) {
+                                    Icon(
+                                        Icons.Default.Favorite,
+                                        contentDescription = "No Favorite Wallpapers",
+                                        modifier = Modifier.size(36.dp),
+                                        tint = MaterialTheme.colorScheme.primary
+                                    )
+                                }
                             }
                         }
-                        Spacer(Modifier.height(16.dp))
+                        Spacer(Modifier.height(20.dp))
                         Text(
-                            "No Favorite Wallpapers",
-                            fontWeight = FontWeight.Bold,
-                            style = MaterialTheme.typography.titleLarge
+                            "Your Favorites Library is Empty",
+                            fontWeight = FontWeight.Black,
+                            style = MaterialTheme.typography.titleLarge,
+                            color = MaterialTheme.colorScheme.onBackground
                         )
+                        Spacer(Modifier.height(6.dp))
                         Text(
-                            "Your favorites collection is empty. Tap the heart-shaped icon button on any wallpaper card to save it here for offline viewing and personalized layouts!",
+                            "Tap the heart icon on any high-definition wallpaper card to instantly cache keys here. Curate your custom responsive layouts and quick-apply with ease!",
                             textAlign = TextAlign.Center,
-                            color = MaterialTheme.colorScheme.onSurfaceVariant,
+                            color = MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.82f),
                             fontSize = 13.sp,
-                            modifier = Modifier.padding(horizontal = 16.dp, vertical = 8.dp)
+                            lineHeight = 18.sp,
+                            modifier = Modifier.padding(horizontal = 24.dp)
                         )
                     } else if (selectedCategory == "Custom" && searchQuery.trim().isEmpty()) {
-                        Surface(
-                            modifier = Modifier.size(80.dp),
-                            shape = CircleShape,
-                            color = MaterialTheme.colorScheme.surfaceVariant
-                        ) {
-                            Box(contentAlignment = Alignment.Center) {
-                                Icon(
-                                    Icons.Default.Image,
-                                    contentDescription = "No Custom Wallpapers",
-                                    modifier = Modifier.size(36.dp),
-                                    tint = MaterialTheme.colorScheme.onSurfaceVariant
-                                )
+                        Box(contentAlignment = Alignment.Center) {
+                            // Pulsing halo rings in background
+                            Box(
+                                modifier = Modifier
+                                    .size(100.dp)
+                                    .graphicsLayer {
+                                        scaleX = pulseScale
+                                        scaleY = pulseScale
+                                    }
+                                    .background(MaterialTheme.colorScheme.secondary.copy(alpha = 0.08f), CircleShape)
+                            )
+                            Box(
+                                modifier = Modifier
+                                    .size(120.dp)
+                                    .graphicsLayer {
+                                        scaleX = pulseScale * 1.08f
+                                        scaleY = pulseScale * 1.08f
+                                    }
+                                    .border(1.dp, MaterialTheme.colorScheme.secondary.copy(alpha = 0.12f), CircleShape)
+                            )
+                            Surface(
+                                modifier = Modifier.size(80.dp),
+                                shape = CircleShape,
+                                color = MaterialTheme.colorScheme.secondaryContainer.copy(alpha = 0.25f),
+                                border = BorderStroke(1.dp, MaterialTheme.colorScheme.secondary.copy(alpha = 0.3f))
+                            ) {
+                                Box(contentAlignment = Alignment.Center) {
+                                    Icon(
+                                        Icons.Default.Image,
+                                        contentDescription = "No Custom Wallpapers",
+                                        modifier = Modifier.size(36.dp),
+                                        tint = MaterialTheme.colorScheme.secondary
+                                    )
+                                }
                             }
                         }
-                        Spacer(Modifier.height(16.dp))
+                        Spacer(Modifier.height(20.dp))
                         Text(
-                            "No Custom Wallpapers",
-                            fontWeight = FontWeight.Bold,
-                            style = MaterialTheme.typography.titleLarge
+                            "No Custom Wallpapers Found",
+                            fontWeight = FontWeight.Black,
+                            style = MaterialTheme.typography.titleLarge,
+                            color = MaterialTheme.colorScheme.onBackground
                         )
+                        Spacer(Modifier.height(6.dp))
                         Text(
-                            "Import or type a local image file path or web URL in the Custom Input section below, then add it to your custom library!",
+                            "Enrich your catalog by importing local high-resolution pictures or typing custom creative web links in our studio launcher below!",
                             textAlign = TextAlign.Center,
-                            color = MaterialTheme.colorScheme.onSurfaceVariant,
+                            color = MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.82f),
                             fontSize = 13.sp,
-                            modifier = Modifier.padding(horizontal = 16.dp, vertical = 8.dp)
+                            lineHeight = 18.sp,
+                            modifier = Modifier.padding(horizontal = 24.dp)
                         )
                     } else {
-                        Surface(
-                            modifier = Modifier.size(80.dp),
-                            shape = CircleShape,
-                            color = MaterialTheme.colorScheme.surfaceVariant
-                        ) {
-                            Box(contentAlignment = Alignment.Center) {
-                                Icon(
-                                    Icons.Default.Search,
-                                    contentDescription = null,
-                                    modifier = Modifier.size(36.dp),
-                                    tint = MaterialTheme.colorScheme.onSurfaceVariant
-                                )
+                        Box(contentAlignment = Alignment.Center) {
+                            Box(
+                                modifier = Modifier
+                                    .size(100.dp)
+                                    .graphicsLayer {
+                                        scaleX = pulseScale
+                                        scaleY = pulseScale
+                                    }
+                                    .background(MaterialTheme.colorScheme.outline.copy(alpha = 0.08f), CircleShape)
+                            )
+                            Surface(
+                                modifier = Modifier.size(80.dp),
+                                shape = CircleShape,
+                                color = MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.3f),
+                                border = BorderStroke(1.dp, MaterialTheme.colorScheme.outline.copy(alpha = 0.2f))
+                            ) {
+                                Box(contentAlignment = Alignment.Center) {
+                                    Icon(
+                                        Icons.Default.Search,
+                                        contentDescription = null,
+                                        modifier = Modifier.size(36.dp),
+                                        tint = MaterialTheme.colorScheme.onSurfaceVariant
+                                    )
+                                }
                             }
                         }
-                        Spacer(Modifier.height(16.dp))
+                        Spacer(Modifier.height(20.dp))
                         Text(
-                            "No Matches Found",
-                            fontWeight = FontWeight.Bold,
-                            style = MaterialTheme.typography.titleLarge
+                            "No Local Matches Found",
+                            fontWeight = FontWeight.Black,
+                            style = MaterialTheme.typography.titleLarge,
+                            color = MaterialTheme.colorScheme.onBackground
                         )
+                        Spacer(Modifier.height(6.dp))
                         Text(
                             "We couldn't locate matching offline files. Let's simulated-download modern high-definition Unsplash premium assets matching this query!",
                             textAlign = TextAlign.Center,
                             color = MaterialTheme.colorScheme.onSurfaceVariant,
                             fontSize = 13.sp,
-                            modifier = Modifier.padding(horizontal = 16.dp, vertical = 8.dp)
+                            lineHeight = 18.sp,
+                            modifier = Modifier.padding(horizontal = 24.dp)
                         )
                         Spacer(Modifier.height(12.dp))
                         
