@@ -64,11 +64,16 @@ jobs:
         run: |
           git config --local user.email "action@github.com"
           git config --local user.name "GitHub Action"
+          # Delete target tag locally and on remote if it already exists, ensuring no push conflict
+          git tag -d "v${{ env.VERSION_NAME }}" || true
+          git push "https://x-access-token:${{ secrets.GITHUB_TOKEN }}@github.com/${{ github.repository }}.git" :refs/tags/v${{ env.VERSION_NAME }} || true
+          # Create and push the tag freshly
           git tag "v${{ env.VERSION_NAME }}"
           git push "https://x-access-token:${{ secrets.GITHUB_TOKEN }}@github.com/${{ github.repository }}.git" "v${{ env.VERSION_NAME }}"
 
       # 🔐 Decode Keystore safely
       - name: Decode Keystore
+        if: ${{ secrets.KEYSTORE_BASE64 != '' }}
         run: |
           echo "${{ secrets.KEYSTORE_BASE64 }}" | base64 --decode > release.keystore
 
@@ -105,6 +110,7 @@ jobs:
 
       # ✍️ Sign APK safely
       - name: Sign APK
+        if: ${{ secrets.KEYSTORE_BASE64 != '' }}
         run: |
           jarsigner -verbose \
             -sigalg SHA256withRSA \
@@ -117,6 +123,7 @@ jobs:
 
       # ✍️ Sign AAB safely
       - name: Sign AAB
+        if: ${{ secrets.KEYSTORE_BASE64 != '' }}
         run: |
           jarsigner -verbose \
             -sigalg SHA256withRSA \
@@ -129,6 +136,7 @@ jobs:
 
       # 📤 Upload directly to Play Store Track (configured in env)
       - name: Upload to Google Play
+        if: ${{ secrets.PLAY_SERVICE_ACCOUNT_JSON != '' }}
         uses: r0adkll/upload-google-play@v1
         with:
           serviceAccountJsonPlainText: ${{ secrets.PLAY_SERVICE_ACCOUNT_JSON }}
