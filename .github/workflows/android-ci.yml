@@ -71,6 +71,16 @@ jobs:
           git tag "v${{ env.VERSION_NAME }}"
           git push "https://x-access-token:${{ secrets.GITHUB_TOKEN }}@github.com/${{ github.repository }}.git" "v${{ env.VERSION_NAME }}"
 
+      # 🔑 Decode Backup Debug Keystore to guarantee fallback release builds succeed
+      - name: Decode Debug Keystore
+        run: |
+          if [ -f "debug.keystore.base64" ]; then
+            echo "Decoding backup debug.keystore.base64 to debug.keystore..."
+            base64 --decode debug.keystore.base64 > debug.keystore
+          else
+            echo "backup debug.keystore.base64 not found."
+          fi
+
       # 🔐 Decode Keystore safely
       - name: Decode Keystore
         if: ${{ secrets.KEYSTORE_BASE64 != '' }}
