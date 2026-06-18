@@ -29,8 +29,8 @@ jobs:
       - name: Validate and Self-Heal Gradle Wrapper
         run: |
           if ! java -jar gradle/wrapper/gradle-wrapper.jar --version >/dev/null 2>&1; then
-            echo "⚠️ Gradle wrapper is corrupted or missing! Regenerating a clean Gradle 8.7 wrapper..."
-            gradle wrapper --gradle-version 8.7 --distribution-type bin
+            echo "⚠️ Gradle wrapper is corrupted or missing! Regenerating a clean Gradle 9.3.1 wrapper..."
+            gradle wrapper --gradle-version 9.3.1 --distribution-type bin
             chmod +x ./gradlew
           else
             echo "✅ Gradle wrapper is intact and valid."
@@ -44,6 +44,11 @@ jobs:
 
       # 📦 Build Release APK
       - name: Build Release APK
+        env:
+          KEYSTORE_PATH: "release.keystore"
+          STORE_PASSWORD: ${{ secrets.KEYSTORE_PASSWORD }}
+          KEY_ALIAS: ${{ secrets.KEY_ALIAS }}
+          KEY_PASSWORD: ${{ secrets.KEY_PASSWORD }}
         run: ./gradlew clean assembleRelease --stacktrace
 
       # 📍 Locate APK
