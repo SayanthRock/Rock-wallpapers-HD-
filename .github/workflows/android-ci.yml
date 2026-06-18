@@ -1,94 +1,48 @@
-name: Rock Wallpapers HD Build
+name: Android Debug APK CI
 
 on:
-  workflow_dispatch:
   push:
-    branches: [ main ]
+  pull_request:
+  workflow_dispatch:
+
+permissions:
+  contents: read
 
 jobs:
-  build:
+  build-debug-apk:
     runs-on: ubuntu-latest
-
     steps:
-      - name: Checkout code
+      - name: Checkout
         uses: actions/checkout@v4
 
-      - name: Set up JDK 17
+      - name: Set up Java 17
         uses: actions/setup-java@v4
         with:
           distribution: temurin
-          java-version: 17
+          java-version: "17"
+          cache: gradle
 
-      - name: Setup Android SDK
+      - name: Set up Android SDK
         uses: android-actions/setup-android@v3
 
-      - name: Make Gradle executable
-        run: chmod +x ./gradlew
-
-      # 🔍 Validate and Self-Heal Gradle Wrapper
-      - name: Validate and Self-Heal Gradle Wrapper
+      - name: Build debug APK
         run: |
-          if ! java -jar gradle/wrapper/gradle-wrapper.jar --version >/dev/null 2>&1; then
-            echo "⚠️ Gradle wrapper is corrupted or missing! Regenerating a clean Gradle 8.7 wrapper..."
-            gradle wrapper --gradle-version 8.7 --distribution-type bin
-            chmod +x ./gradlew
-          else
-            echo "✅ Gradle wrapper is intact and valid."
-          fi
-          ./gradlew --version
+          chmod +x ./gradlew
+          ./gradlew --no-daemon --stacktrace assembleDebug
 
-      # 🔐 Decode Keystore safely
-      - name: Decode Keystore
+      - name: Verify debug APK exists
         run: |
-          echo "${{ secrets.KEYSTORE_BASE64 }}" | base64 --decode > release.keystore
-
-      # 📦 Build Release APK
-      - name: Build Release APK
-        run: ./gradlew clean assembleRelease --stacktrace
-
-      # 📍 Locate APK
-      - name: Find APK
-        id: apk
-        run: |
-          APK_PATH=$(find app/build/outputs/apk/release -name "*.apk" | head -n 1)
+          APK_PATH=$(find app/build/outputs/apk/debug -name "*.apk" -type f | head -n 1)
           if [ -z "$APK_PATH" ]; then
-            echo "Error: No APK found!"
+            echo "Debug APK was not generated."
             exit 1
           fi
-          echo "apk_path=$APK_PATH" >> $GITHUB_OUTPUT
+          echo "Found APK: $APK_PATH"
 
-      # ✍️ Sign APK (FIXED - correct way)
-      - name: Sign APK
-        run: |
-          jarsigner -verbose \
-            -sigalg SHA256withRSA \
-            -digestalg SHA-256 \
-            -keystore release.keystore \
-            -storepass "${{ secrets.KEYSTORE_PASSWORD }}" \
-            -keypass "${{ secrets.KEY_PASSWORD }}" \
-            "${{ steps.apk.outputs.apk_path }}" \
-            "${{ secrets.KEY_ALIAS }}"
-
-      # 📛 Rename APK
-      - name: Rename APK
-        run: |
-          mkdir output
-          cp "${{ steps.apk.outputs.apk_path }}" output/
-          mv output/*.apk output/Rock-Wallpapers-HD-v3.6.0.apk
-
-      # 📤 Upload artifact
-      - name: Upload APK Artifact
+      - name: Upload debug APK
         uses: actions/upload-artifact@v4
         with:
-          name: Rock-Wallpapers-HD
-          path: output/*.apk
-
-      # 🚀 GitHub Release
-      - name: Create Release
-        uses: softprops/action-gh-release@v2
-        with:
-          tag_name: v3.6.0
-          name: Rock Wallpapers HD v3.6.0
-          files: output/*.apk
-        env:
-          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          name: app-debug-apk
+          path: app/build/outputs/apk/debug/*.apk
+          if-no-files-found: error
+          retention-days: 14
