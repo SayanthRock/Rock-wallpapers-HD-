@@ -1623,9 +1623,16 @@ fun MainScreen(
 
                         // Subtle zoom animation
                         val cardScale by animateFloatAsState(
-                            targetValue = if (isPressed) 0.96f else if (isHovered) 1.04f else 1.0f,
+                            targetValue = if (isPressed) 0.96f else if (isHovered) 1.03f else 1.0f,
                             animationSpec = spring(dampingRatio = 0.75f, stiffness = 300f),
                             label = "card_scale"
+                        )
+
+                        // Subtle inner wallpaper thumbnail image zoom-in hover animation
+                        val imageScale by animateFloatAsState(
+                            targetValue = if (isHovered) 1.12f else 1.0f,
+                            animationSpec = spring(dampingRatio = 0.85f, stiffness = 150f),
+                            label = "image_scale"
                         )
 
                         // Elegant floating shadow/elevation animation
@@ -1690,7 +1697,12 @@ fun MainScreen(
                                         .size(360, 500)
                                         .build(),
                                     contentDescription = item.title,
-                                    modifier = Modifier.fillMaxSize(),
+                                    modifier = Modifier
+                                        .fillMaxSize()
+                                        .graphicsLayer {
+                                            scaleX = imageScale
+                                            scaleY = imageScale
+                                        },
                                     contentScale = ContentScale.Crop
                                 )
 
