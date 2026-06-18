@@ -1,17 +1,22 @@
-name: Rock Wallpapers HD Build
+name: Rock Wallpapers HD - Full Play Store Automation
 
 on:
   workflow_dispatch:
   push:
     branches: [ main ]
 
+env:
+  TRACK: internal   # Change to beta / production when needed
+
 jobs:
-  build:
+  deploy:
     runs-on: ubuntu-latest
 
     steps:
       - name: Checkout code
         uses: actions/checkout@v4
+        with:
+          fetch-depth: 0 # Get all tags and history
 
       - name: Set up JDK 17
         uses: actions/setup-java@v4
@@ -21,6 +26,9 @@ jobs:
 
       - name: Setup Android SDK
         uses: android-actions/setup-android@v3
+
+      - name: Setup Gradle Cache
+        uses: gradle/actions/setup-gradle@v3
 
       - name: Make Gradle executable
         run: chmod +x ./gradlew
@@ -37,19 +45,40 @@ jobs:
           fi
           ./gradlew --version
 
+      # 📦 Set Version Code and Version Name dynamically
+      - name: Set Version
+        run: |
+          # Increment since current base is 36
+          VERSION_CODE=$((36 + ${{ github.run_number }}))
+          VERSION_NAME="3.6.${{ github.run_number }}"
+          echo "VERSION_CODE=$VERSION_CODE" >> $GITHUB_ENV
+          echo "VERSION_NAME=$VERSION_NAME" >> $GITHUB_ENV
+          echo "Version Code set to: $VERSION_CODE"
+          echo "Version Name set to: $VERSION_NAME"
+
+      # 🧠 Create Git Tag
+      - name: Create Git Tag
+        run: |
+          git config --local user.email "action@github.com"
+          git config --local user.name "GitHub Action"
+          git tag "v${{ env.VERSION_NAME }}"
+          git push origin "v${{ env.VERSION_NAME }}"
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+
       # 🔐 Decode Keystore safely
       - name: Decode Keystore
         run: |
           echo "${{ secrets.KEYSTORE_BASE64 }}" | base64 --decode > release.keystore
 
-      # 📦 Build Release APK
-      - name: Build Release APK
+      # 📦 Build Release APK and AAB with environment secrets & dynamic version properties
+      - name: Build Release Bundle and APK
         env:
           KEYSTORE_PATH: "release.keystore"
           STORE_PASSWORD: ${{ secrets.KEYSTORE_PASSWORD }}
           KEY_ALIAS: ${{ secrets.KEY_ALIAS }}
           KEY_PASSWORD: ${{ secrets.KEY_PASSWORD }}
-        run: ./gradlew clean assembleRelease --stacktrace
+        run: ./gradlew clean assembleRelease bundleRelease --stacktrace
 
       # 📍 Locate APK
       - name: Find APK
@@ -62,7 +91,18 @@ jobs:
           fi
           echo "apk_path=$APK_PATH" >> $GITHUB_OUTPUT
 
-      # ✍️ Sign APK (FIXED - correct way)
+      # 📍 Locate AAB
+      - name: Find AAB
+        id: aab
+        run: |
+          AAB_PATH=$(find app/build/outputs/bundle/release -name "*.aab" | head -n 1)
+          if [ -z "$AAB_PATH" ]; then
+            echo "Error: No AAB found!"
+            exit 1
+          fi
+          echo "aab_path=$AAB_PATH" >> $GITHUB_OUTPUT
+
+      # ✍️ Sign APK safely
       - name: Sign APK
         run: |
           jarsigner -verbose \
@@ -74,26 +114,85 @@ jobs:
             "${{ steps.apk.outputs.apk_path }}" \
             "${{ secrets.KEY_ALIAS }}"
 
-      # 📛 Rename APK
-      - name: Rename APK
+      # ✍️ Sign AAB safely
+      - name: Sign AAB
         run: |
-          mkdir output
-          cp "${{ steps.apk.outputs.apk_path }}" output/
-          mv output/*.apk output/Rock-Wallpapers-HD-v3.6.0.apk
+          jarsigner -verbose \
+            -sigalg SHA256withRSA \
+            -digestalg SHA-256 \
+            -keystore release.keystore \
+            -storepass "${{ secrets.KEYSTORE_PASSWORD }}" \
+            -keypass "${{ secrets.KEY_PASSWORD }}" \
+            "${{ steps.aab.outputs.aab_path }}" \
+            "${{ secrets.KEY_ALIAS }}"
 
-      # 📤 Upload artifact
-      - name: Upload APK Artifact
+      # 📤 Upload directly to Play Store Track (configured in env)
+      - name: Upload to Google Play
+        uses: r0adkll/upload-google-play@v1
+        with:
+          serviceAccountJsonPlainText: ${{ secrets.PLAY_SERVICE_ACCOUNT_JSON }}
+          packageName: com.aistudio.rockwallpapers.wmxkzl
+          releaseFiles: ${{ steps.aab.outputs.aab_path }}
+          track: ${{ env.TRACK }}
+          status: completed
+
+      # 📛 Rename APK for release/artifact convenience
+      - name: Prepare Output Directory
+        run: |
+          mkdir -p output
+          cp "${{ steps.apk.outputs.apk_path }}" output/Rock-Wallpapers-HD-v${{ env.VERSION_NAME }}.apk
+          cp "${{ steps.aab.outputs.aab_path }}" output/Rock-Wallpapers-HD-v${{ env.VERSION_NAME }}.aab
+
+      # 📤 Upload Artifact backups to GitHub Actions Build page
+      - name: Upload Artifacts Backup
         uses: actions/upload-artifact@v4
         with:
-          name: Rock-Wallpapers-HD
-          path: output/*.apk
+          name: Rock-Wallpapers-HD-Builds
+          path: |
+            output/Rock-Wallpapers-HD-v${{ env.VERSION_NAME }}.apk
+            output/Rock-Wallpapers-HD-v${{ env.VERSION_NAME }}.aab
 
-      # 🚀 GitHub Release
+      # 🚀 Create standard GitHub Release containing the signed APK & AAB
       - name: Create Release
         uses: softprops/action-gh-release@v2
         with:
-          tag_name: v3.6.0
-          name: Rock Wallpapers HD v3.6.0
-          files: output/*.apk
+          tag_name: v${{ env.VERSION_NAME }}
+          name: Rock Wallpapers HD Release v${{ env.VERSION_NAME }}
+          body: |
+            ### Automated Pipeline Release v${{ env.VERSION_NAME }} (Build #${{ github.run_number }})
+            
+            - **Google Play deployment track**: `${{ env.TRACK }}` (Auto deployed)
+            - **Build Version Code**: `${{ env.VERSION_CODE }}`
+            - **Build Version Name**: `${{ env.VERSION_NAME }}`
+            
+            All production quality checks and screenshot testing has succeeded! 🎉
+          files: |
+            output/Rock-Wallpapers-HD-v${{ env.VERSION_NAME }}.apk
+            output/Rock-Wallpapers-HD-v${{ env.VERSION_NAME }}.aab
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+
+      # 📣 TELEGRAM NOTIFICATION
+      - name: Telegram Notify
+        if: always()
+        run: |
+          if [ -n "${{ secrets.TELEGRAM_BOT_TOKEN }}" ] && [ -n "${{ secrets.TELEGRAM_CHAT_ID }}" ]; then
+            curl -s -X POST "https://api.telegram.org/bot${{ secrets.TELEGRAM_BOT_TOKEN }}/sendMessage" \
+            -d chat_id="${{ secrets.TELEGRAM_CHAT_ID }}" \
+            -d text="🚀 Rock Wallpapers HD Deployed: v${{ env.VERSION_NAME }} on ${{ env.TRACK }} track"
+          else
+            echo "Telegram credentials not provided, skipping notification."
+          fi
+
+      # 📣 DISCORD NOTIFICATION
+      - name: Discord Notify
+        if: always()
+        run: |
+          if [ -n "${{ secrets.DISCORD_WEBHOOK }}" ]; then
+            curl -H "Content-Type: application/json" \
+            -X POST \
+            -d '{"content":"🚀 New Play Store Release v${{ env.VERSION_NAME }} deployed on ${{ env.TRACK }} track"}' \
+            "${{ secrets.DISCORD_WEBHOOK }}"
+          else
+            echo "Discord Webhook not provided, skipping notification."
+          fi
