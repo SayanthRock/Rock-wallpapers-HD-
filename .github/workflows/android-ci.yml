@@ -65,9 +65,7 @@ jobs:
           git config --local user.email "action@github.com"
           git config --local user.name "GitHub Action"
           git tag "v${{ env.VERSION_NAME }}"
-          git push origin "v${{ env.VERSION_NAME }}"
-        env:
-          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          git push "https://x-access-token:${{ secrets.GITHUB_TOKEN }}@github.com/${{ github.repository }}.git" "v${{ env.VERSION_NAME }}"
 
       # 🔐 Decode Keystore safely
       - name: Decode Keystore
