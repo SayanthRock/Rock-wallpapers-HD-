@@ -5,7 +5,9 @@ updates:
     directory: "/"
     schedule:
       interval: "weekly"
-    open-pull-requests-limit: 5
+    open-pull-requests-limit: 3
+
+    # Safely group security updates to avoid PR noise
     groups:
       gradle-dependencies:
         applies-to: security-updates
@@ -13,3 +15,29 @@ updates:
           - "androidx.*"
           - "com.google.*"
           - "org.jetbrains.kotlin.*"
+
+    ignore:
+      # KSP is strictly tied to specific Kotlin versions. Autoupdating KSP breaks builds immediately.
+      - dependency-name: "com.google.devtools.ksp"
+        update-types: ["version-update:semver-major", "version-update:semver-minor"]
+      
+      # Kotlin compiler updates must be manual to ensure project-wide compatibility.
+      - dependency-name: "org.jetbrains.kotlin.*"
+        update-types: ["version-update:semver-major", "version-update:semver-minor"]
+        
+      # Android Gradle Plugin should be carefully matched with Gradle wrapper.
+      - dependency-name: "com.android.application"
+        update-types: ["version-update:semver-major"]
+      - dependency-name: "com.android.tools.build:gradle"
+        update-types: ["version-update:semver-major"]
+
+      # Restrict major upgrades of core lifecycle packages which can introduce APIs requiring newer compileSdk
+      - dependency-name: "androidx.lifecycle:*"
+        update-types: ["version-update:semver-major"]
+
+      # Restrict major upgrades of retrofit & okhttp to preserve stable network layers
+      - dependency-name: "com.squareup.retrofit2:*"
+        update-types: ["version-update:semver-major"]
+      - dependency-name: "com.squareup.okhttp3:*"
+        update-types: ["version-update:semver-major"]
+
