@@ -1,12 +1,15 @@
-name: Rock Wallpapers HD - Full Play Store Automation
+name: Rock Wallpapers HD - Stable CI/CD & Play Store Automation
 
 on:
   workflow_dispatch:
   push:
     branches: [ main ]
+  pull_request:
+    branches: [ main ]
 
 env:
   TRACK: internal   # Change to beta / production when needed
+  GRADLE_OPTS: -Dorg.gradle.daemon=false
 
 permissions:
   contents: write
@@ -61,6 +64,7 @@ jobs:
 
       # 🧠 Create Git Tag
       - name: Create Git Tag
+        if: github.ref == 'refs/heads/main' && github.event_name != 'pull_request'
         run: |
           git config --local user.email "action@github.com"
           git config --local user.name "GitHub Action"
@@ -146,7 +150,7 @@ jobs:
 
       # 📤 Upload directly to Play Store Track (configured in env)
       - name: Upload to Google Play
-        if: ${{ secrets.PLAY_SERVICE_ACCOUNT_JSON != '' }}
+        if: github.ref == 'refs/heads/main' && github.event_name != 'pull_request' && secrets.PLAY_SERVICE_ACCOUNT_JSON != ''
         uses: r0adkll/upload-google-play@v1
         with:
           serviceAccountJsonPlainText: ${{ secrets.PLAY_SERVICE_ACCOUNT_JSON }}
@@ -173,6 +177,7 @@ jobs:
 
       # 🚀 Create standard GitHub Release containing the signed APK & AAB
       - name: Create Release
+        if: github.ref == 'refs/heads/main' && github.event_name != 'pull_request'
         uses: softprops/action-gh-release@v2
         with:
           tag_name: v${{ env.VERSION_NAME }}
@@ -193,7 +198,7 @@ jobs:
 
       # 📣 TELEGRAM NOTIFICATION
       - name: Telegram Notify
-        if: always()
+        if: always() && github.ref == 'refs/heads/main' && github.event_name != 'pull_request'
         run: |
           if [ -n "${{ secrets.TELEGRAM_BOT_TOKEN }}" ] && [ -n "${{ secrets.TELEGRAM_CHAT_ID }}" ]; then
             curl -s -X POST "https://api.telegram.org/bot${{ secrets.TELEGRAM_BOT_TOKEN }}/sendMessage" \
@@ -205,7 +210,7 @@ jobs:
 
       # 📣 DISCORD NOTIFICATION
       - name: Discord Notify
-        if: always()
+        if: always() && github.ref == 'refs/heads/main' && github.event_name != 'pull_request'
         run: |
           if [ -n "${{ secrets.DISCORD_WEBHOOK }}" ]; then
             curl -H "Content-Type: application/json" \
@@ -215,3 +220,13 @@ jobs:
           else
             echo "Discord Webhook not provided, skipping notification."
           fi
+
+      # 📤 Upload build reports (on failure)
+      - name: Upload Build Reports on Failure
+        if: failure()
+        uses: actions/upload-artifact@v4
+        with:
+          name: build-reports
+          path: |
+            app/build/reports/
+            **/build/reports/
